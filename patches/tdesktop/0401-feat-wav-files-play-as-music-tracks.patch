@@ -1,0 +1,285 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:10:33 +0200
+Subject: [PATCH] feat: wav files play as music tracks
+
+---
+ Telegram/CMakeLists.txt                       |  2 ++
+ Telegram/Resources/langs/mad_ru.json          |  4 +++-
+ Telegram/SourceFiles/data/data_document.cpp   |  9 ++++++++
+ .../view/media/history_view_document.cpp      |  2 +-
+ .../SourceFiles/settings/settings_tele.cpp    |  4 ++++
+ .../SourceFiles/storage/localimageloader.cpp  |  6 ++++-
+ Telegram/SourceFiles/tele/tele_options.cpp    | 13 +++++++++++
+ Telegram/SourceFiles/tele/tele_options.h      |  2 ++
+ .../SourceFiles/tele/tele_settings_io.cpp     |  1 +
+ Telegram/SourceFiles/tele/tele_wav_music.cpp  | 22 +++++++++++++++++++
+ Telegram/SourceFiles/tele/tele_wav_music.h    |  9 ++++++++
+ .../tele/tests/mad_logic_tests.cpp            | 13 +++++++++++
+ Telegram/cmake/mad_tests.cmake                |  1 +
+ 13 files changed, 85 insertions(+), 3 deletions(-)
+ create mode 100644 Telegram/SourceFiles/tele/tele_wav_music.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_wav_music.h
+
+diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
+index e1f59f22054b29398c6dfaf4cc46963e66d04ab4..47d77f30abddd5fb7bbd807828d96d59dcb2f8ae 100644
+--- a/Telegram/CMakeLists.txt
++++ b/Telegram/CMakeLists.txt
+@@ -2662,6 +2662,8 @@ PRIVATE
+     tele/tele_mad_badge_card.h
+     tele/tele_single_paths.cpp
+     tele/tele_single_paths.h
++    tele/tele_wav_music.cpp
++    tele/tele_wav_music.h
+     tele/tele_mad_names.cpp
+     tele/tele_mad_names.h
+     tele/tele_snippets.cpp
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 014ef0576102358b17ec8274662a84ecbb8751ce..a83ea3a1ca959e79e32686fcef28802570907391 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2148,5 +2148,7 @@
+   "Shows which mad build is running.": "Показывает, какая сборка mad запущена.",
+   "In private chats": "В личных чатах",
+   "In groups": "В группах",
+-  "In channels": "В каналах"
++  "In channels": "В каналах",
++  "WAV files as music": "WAV как музыка",
++  "WAV files are sent and shown as tracks in the player. Files already loaded change after a restart.": "WAV-файлы отправляются и показываются треками в плеере. Уже загруженные файлы поменяются после перезапуска."
+ }
+diff --git a/Telegram/SourceFiles/data/data_document.cpp b/Telegram/SourceFiles/data/data_document.cpp
+index 216749176002bba8f38cdc62b252cbad9607d141..6c95ad155e4975a93b77ca10b403a042f27c89e3 100644
+--- a/Telegram/SourceFiles/data/data_document.cpp
++++ b/Telegram/SourceFiles/data/data_document.cpp
+@@ -46,6 +46,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "tele/tele_download_paths.h"
+ #include "tele/secret/secret_chats.h"
+ #include "tele/tele_sticker_truth.h"
++#include "tele/tele_wav_music.h"
++#include "tele/tele_options.h"
+ 
+ #include <QtCore/QBuffer>
+ #include <QtCore/QMimeType>
+@@ -535,6 +537,13 @@ void DocumentData::setattributes(
+ 		_additional = nullptr;
+ 	}
+ 
++	if (type == FileDocument
++		&& Tele::WavMusic()
++		&& Tele::IsWavFile(_mimeString, _filename)) {
++		type = SongDocument;
++		_additional = std::make_unique<SongData>();
++	}
++
+ 	if (!_filename.isEmpty()) {
+ 		using Type = Core::NameType;
+ 		if (type == VideoDocument
+diff --git a/Telegram/SourceFiles/history/view/media/history_view_document.cpp b/Telegram/SourceFiles/history/view/media/history_view_document.cpp
+index 5fe118877f1fae438c989b5a3edc9e8abf63ce44..beb6628edd2615e7283797eb2b64014ef643de04 100644
+--- a/Telegram/SourceFiles/history/view/media/history_view_document.cpp
++++ b/Telegram/SourceFiles/history/view/media/history_view_document.cpp
+@@ -1631,7 +1631,7 @@ bool Document::uploading() const {
+ }
+ 
+ void Document::setStatusSize(int64 newSize, TimeId realDuration) const {
+-	const auto duration = (_data->isSong()
++	const auto duration = ((_data->isSong() && _data->hasDuration())
+ 		|| _data->isVoiceMessage()
+ 		|| _transcribedRound)
+ 		? _data->duration()
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index 23be7bf018c028347d22ebc48ec7c2f36d9e9cf4..01dbee7961d2c660ecf64f6d50d9fcef2264f295 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -3054,6 +3054,10 @@ void FillChats(SectionBuilder &builder) {
+ 		builder,
+ 		::Tele::kOptionQuickView,
+ 		{ u"json"_q, u"csv"_q, u"log"_q, u"code"_q, u"preview"_q, u"markdown"_q });
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionWavMusic,
++		{ u"audio"_q, u"track"_q, u"player"_q });
+ 	AddGroupDivider(builder);
+ 	AddGroupTitle(builder, u"Sponsored"_q);
+ 	AddOptionToggle(builder, ::Tele::kOptionHideSponsored);
+diff --git a/Telegram/SourceFiles/storage/localimageloader.cpp b/Telegram/SourceFiles/storage/localimageloader.cpp
+index 432ae8d582f0fec9a69706e91f55abd7350a892c..4908853284fef550d4d73c723313e1d9657ebf7e 100644
+--- a/Telegram/SourceFiles/storage/localimageloader.cpp
++++ b/Telegram/SourceFiles/storage/localimageloader.cpp
+@@ -46,6 +46,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "tele/tele_send_files.h"
+ #include "tele/tele_sticker_truth.h"
+ #include "tele/tele_photo_padding.h"
++#include "tele/tele_options.h"
++#include "tele/tele_wav_music.h"
+ 
+ #include <QtCore/QBuffer>
+ #include <QtGui/QImageWriter>
+@@ -610,7 +612,9 @@ bool FileLoadTask::CheckForSong(
+ 			filepath,
+ 			result->filemime,
+ 			mimes,
+-			extensions)) {
++			extensions)
++		&& !(Tele::WavMusic()
++			&& Tele::IsWavFile(result->filemime, filepath))) {
+ 		return false;
+ 	}
+ 
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index 29ee76e2625b58b293cfb065ca88cd6d9f12e73c..e3b3abaad0e46089b4156bb4bc0be1fe7b433bdc 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -143,6 +143,7 @@ const char kOptionDeletedReply[] = "tele-deleted-reply";
+ const char kOptionDeletedQuoteName[] = "tele-deleted-quote-name";
+ const char kOptionSavedHistoryPeriod[] = "tele-saved-history-period";
+ const char kOptionRevealSpoilers[] = "tele-reveal-spoilers";
++const char kOptionWavMusic[] = "tele-wav-music";
+ const char kOptionRevealSpoilersPrivate[] = "tele-reveal-spoilers-private";
+ const char kOptionRevealSpoilersGroups[] = "tele-reveal-spoilers-groups";
+ const char kOptionRevealSpoilersChannels[] = "tele-reveal-spoilers-channels";
+@@ -1118,6 +1119,14 @@ base::options::toggle RevealSpoilersOption({
+ 	.name = "Reveal spoilers automatically",
+ });
+ 
++base::options::toggle WavMusicOption({
++	.id = kOptionWavMusic,
++	.name = "WAV files as music",
++	.description = "WAV files are sent and shown as tracks in the player. "
++		"Files already loaded change after a restart.",
++	.defaultValue = true,
++});
++
+ base::options::toggle RevealSpoilersPrivateOption({
+ 	.id = kOptionRevealSpoilersPrivate,
+ 	.name = "In private chats",
+@@ -3193,6 +3202,10 @@ bool RevealSpoilers() {
+ 	return RevealSpoilersOption.value();
+ }
+ 
++bool WavMusic() {
++	return WavMusicOption.value();
++}
++
+ bool RevealSpoilersPrivate() {
+ 	return RevealSpoilersPrivateOption.value();
+ }
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index 766517cc498566e5ad64b2550f42b297c12bde2c..35e11e86d2ec8268d4107d93e5b6af63cfeea54f 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -138,6 +138,7 @@ extern const char kOptionDeletedReply[];
+ extern const char kOptionDeletedQuoteName[];
+ extern const char kOptionSavedHistoryPeriod[];
+ extern const char kOptionRevealSpoilers[];
++extern const char kOptionWavMusic[];
+ extern const char kOptionRevealSpoilersPrivate[];
+ extern const char kOptionRevealSpoilersGroups[];
+ extern const char kOptionRevealSpoilersChannels[];
+@@ -497,6 +498,7 @@ void SetDeletedQuoteName(const QString &value);
+ void SetSavedHistoryPeriod(const QString &value);
+ [[nodiscard]] rpl::producer<QString> SavedHistoryPeriodValue();
+ [[nodiscard]] bool RevealSpoilers();
++[[nodiscard]] bool WavMusic();
+ [[nodiscard]] bool RevealSpoilersPrivate();
+ [[nodiscard]] bool RevealSpoilersGroups();
+ [[nodiscard]] bool RevealSpoilersChannels();
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index bd3a05897acd35b1f9cc3876199013336ff3da1e..5cce48a85dee6614da3e80bd072577002c1f5d17 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -236,6 +236,7 @@ struct Spec {
+ 		Toggle(kOptionDeletedIcon),
+ 		Toggle(kOptionDeletedOutOfLists),
+ 		Toggle(kOptionRevealSpoilers),
++		Toggle(kOptionWavMusic),
+ 		Toggle(kOptionRevealSpoilersPrivate),
+ 		Toggle(kOptionRevealSpoilersGroups),
+ 		Toggle(kOptionRevealSpoilersChannels),
+diff --git a/Telegram/SourceFiles/tele/tele_wav_music.cpp b/Telegram/SourceFiles/tele/tele_wav_music.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..6d704dec8dfb9cfd821b0d8881085bf2458442ca
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_wav_music.cpp
+@@ -0,0 +1,22 @@
++#include "tele/tele_wav_music.h"
++
++#include <QtCore/QStringList>
++
++namespace Tele {
++
++bool IsWavFile(const QString &mime, const QString &name) {
++	static const auto mimes = QStringList{
++		QStringLiteral("audio/wav"),
++		QStringLiteral("audio/x-wav"),
++		QStringLiteral("audio/wave"),
++		QStringLiteral("audio/vnd.wave"),
++	};
++	if (mimes.contains(mime.trimmed(), Qt::CaseInsensitive)) {
++		return true;
++	}
++	const auto trimmed = name.trimmed();
++	return trimmed.endsWith(QStringLiteral(".wav"), Qt::CaseInsensitive)
++		|| trimmed.endsWith(QStringLiteral(".wave"), Qt::CaseInsensitive);
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_wav_music.h b/Telegram/SourceFiles/tele/tele_wav_music.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..58094e9dafbf806567044cf9994b0771bad1dae2
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_wav_music.h
+@@ -0,0 +1,9 @@
++#pragma once
++
++#include <QtCore/QString>
++
++namespace Tele {
++
++[[nodiscard]] bool IsWavFile(const QString &mime, const QString &name);
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+index 4de23af1dd081a07a1bed9183bb9fb37f88d0930..929e8d672bccd22abc0c4c4b6ecf202a310f5eb7 100644
+--- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
++++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+@@ -1,4 +1,5 @@
+ #include "tele/tele_single_paths.h"
++#include "tele/tele_wav_music.h"
+ 
+ #include <cstdio>
+ #include <cstdlib>
+@@ -23,9 +24,21 @@ void TestSinglePaths() {
+ 	Require(SingleFileProfileCandidate(QStringLiteral("C:/x/mad-single/other/abc/")).isEmpty(), "other folder");
+ }
+ 
++void TestWavFiles() {
++	using Tele::IsWavFile;
++	Require(IsWavFile(QStringLiteral("audio/x-wav"), QString()), "wav mime");
++	Require(IsWavFile(QStringLiteral("Audio/WAV"), QString()), "wav mime case");
++	Require(IsWavFile(QStringLiteral("application/octet-stream"), QStringLiteral("take 1.WAV")), "wav extension");
++	Require(IsWavFile(QString(), QStringLiteral("loop.wave")), "wave extension");
++	Require(!IsWavFile(QStringLiteral("audio/mpeg"), QStringLiteral("song.mp3")), "mp3");
++	Require(!IsWavFile(QStringLiteral("application/zip"), QStringLiteral("wav.zip")), "zip named wav");
++	Require(!IsWavFile(QString(), QString()), "empty");
++}
++
+ } // namespace
+ 
+ int main() {
+ 	TestSinglePaths();
++	TestWavFiles();
+ 	return 0;
+ }
+diff --git a/Telegram/cmake/mad_tests.cmake b/Telegram/cmake/mad_tests.cmake
+index 9a54588bbf27a7403d0aaa80f334232edb33b50f..5ee0bd742016d44d9d24ef2d0b7fc3eb1d4daa04 100644
+--- a/Telegram/cmake/mad_tests.cmake
++++ b/Telegram/cmake/mad_tests.cmake
+@@ -45,6 +45,7 @@ init_target(mad_logic_tests "(tests)")
+ target_include_directories(mad_logic_tests PRIVATE ${src_loc})
+ target_sources(mad_logic_tests PRIVATE
+     ${src_loc}/tele/tele_single_paths.cpp
++    ${src_loc}/tele/tele_wav_music.cpp
+     ${src_loc}/tele/tests/mad_logic_tests.cpp
+ )
+ target_link_libraries(mad_logic_tests PRIVATE
