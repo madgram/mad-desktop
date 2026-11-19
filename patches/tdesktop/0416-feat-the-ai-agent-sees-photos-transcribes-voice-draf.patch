@@ -144,7 +144,7 @@ index fac7bc9099a0c31bb15c47d432c7f2a94f954aa7..15b809f717dd5b73e3b221681c54c0b1
  
  } // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.cpp b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
-index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..f2832298313750a3b10c07e58f1f753afb76a76c 100644
+index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a57a054d6 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_tools.cpp
 +++ b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
 @@ -1,9 +1,17 @@
@@ -652,7 +652,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..f2832298313750a3b10c07e58f1f753a
 +		rpl::merge(
 +			_session->downloaderTaskFinished() | rpl::map_to(false),
 +			base::timer_once(kPhotoTimeout) | rpl::map_to(true)
-+		) | rpl::start_with_next(check, wait->lifetime);
++		) | rpl::on_next(check, wait->lifetime);
 +	});
 +}
 +
@@ -717,7 +717,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..f2832298313750a3b10c07e58f1f753a
 +		const auto fullId = item->fullId();
 +		const auto started = crl::now();
 +		const auto wait = _lifetime.make_state<rpl::lifetime>();
-+		base::timer_each(kTranscribePoll) | rpl::start_with_next([=] {
++		base::timer_each(kTranscribePoll) | rpl::on_next([=] {
 +			const auto current = session->data().message(fullId);
 +			auto ready = current
 +				? result(current)

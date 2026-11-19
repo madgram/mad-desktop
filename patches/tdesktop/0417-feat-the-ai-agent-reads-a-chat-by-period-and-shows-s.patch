@@ -23,7 +23,7 @@ index 8f905e1db709be00bb792d02d4abe6eb058255f9..f88dda5149f9259ffd04d727eb0d618b
 +  "Scrolled through %1": "Пролистал %1"
  }
 diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.cpp b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
-index f2832298313750a3b10c07e58f1f753afb76a76c..a9adb63b7c0c9895fa4ee95f8b86b2698d2b668d 100644
+index 7dee82139910de15b5276afb8b09336a57a054d6..334d84eaf9e9fc056497257e5ef571ffdcf9e8fe 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_tools.cpp
 +++ b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
 @@ -44,7 +44,19 @@ namespace Tele::Agent {
