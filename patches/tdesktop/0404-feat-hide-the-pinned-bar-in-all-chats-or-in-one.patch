@@ -1,0 +1,511 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:14:24 +0200
+Subject: [PATCH] feat: hide the pinned bar in all chats or in one
+
+---
+ Telegram/CMakeLists.txt                       |  2 +
+ Telegram/Resources/langs/mad_ru.json          |  7 ++-
+ .../SourceFiles/history/history_widget.cpp    |  8 ++-
+ .../controls/history_view_top_controls.cpp    | 10 +++-
+ .../SourceFiles/settings/settings_tele.cpp    |  4 ++
+ Telegram/SourceFiles/tele/tele_options.cpp    | 34 ++++++++++++-
+ Telegram/SourceFiles/tele/tele_options.h      |  6 +++
+ .../tele/tele_pinned_bar_rules.cpp            | 47 +++++++++++++++++
+ .../SourceFiles/tele/tele_pinned_bar_rules.h  | 17 +++++++
+ .../SourceFiles/tele/tele_settings_io.cpp     |  2 +
+ .../SourceFiles/tele/tele_show_pinned.cpp     | 50 ++++++++++++-------
+ Telegram/SourceFiles/tele/tele_show_pinned.h  |  4 ++
+ .../tele/tests/mad_logic_tests.cpp            | 20 ++++++++
+ Telegram/cmake/mad_tests.cmake                |  1 +
+ 14 files changed, 190 insertions(+), 22 deletions(-)
+ create mode 100644 Telegram/SourceFiles/tele/tele_pinned_bar_rules.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_pinned_bar_rules.h
+
+diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
+index 47d77f30abddd5fb7bbd807828d96d59dcb2f8ae..d71e88ac9d28f35fcd649cba3e93f8dc9dc462bf 100644
+--- a/Telegram/CMakeLists.txt
++++ b/Telegram/CMakeLists.txt
+@@ -2664,6 +2664,8 @@ PRIVATE
+     tele/tele_single_paths.h
+     tele/tele_wav_music.cpp
+     tele/tele_wav_music.h
++    tele/tele_pinned_bar_rules.cpp
++    tele/tele_pinned_bar_rules.h
+     tele/tele_mad_names.cpp
+     tele/tele_mad_names.h
+     tele/tele_snippets.cpp
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index e38c4497106b75cd619389c3a3b9d02aeb03ddbb..94a4f08cca08bf56f53e89ab5d1f53cfb9ce08e4 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -653,7 +653,6 @@
+   "Forward protected messages as copies": "Пересылать защищенные сообщения в виде копий",
+   "Friend": "Друг",
+   "From": "От",
+-  "From a chat's menu, in chats where you can't unpin.": "В меню чата, если у тебя нет права откреплять сообщения.",
+   "From a folder's menu, on this device only.": "Из меню папки, только на этом устройстве.",
+   "From favorites": "Из избранного",
+   "From groups, including muted ones.": "Из групп, включая группы с выключенными уведомлениями.",
+@@ -2152,5 +2151,9 @@
+   "WAV files as music": "WAV как музыка",
+   "WAV files are sent and shown as tracks in the player. Files already loaded change after a restart.": "WAV-файлы отправляются и показываются треками в плеере. Уже загруженные файлы поменяются после перезапуска.",
+   "Hide the voice message button": "Скрыть кнопку голосовых",
+-  "The send button stays in its place, voice and video messages can't be recorded from the message field.": "На её месте остаётся кнопка отправки, записать голосовое или кружок из поля ввода не получится."
++  "The send button stays in its place, voice and video messages can't be recorded from the message field.": "На её месте остаётся кнопка отправки, записать голосовое или кружок из поля ввода не получится.",
++  "From a chat's menu, for that chat only.": "Из меню чата, только для этого чата.",
++  "Hide the pinned bar in all chats": "Скрыть панель закрепа во всех чатах",
++  "Pinned messages stay in the chat menu. Single chats can still show the bar from their menu.": "Закреплённые сообщения остаются в меню чата. В отдельных чатах панель можно вернуть через их меню.",
++  "Pinned bar in chats": "Панель закрепа в чатах"
+ }
+diff --git a/Telegram/SourceFiles/history/history_widget.cpp b/Telegram/SourceFiles/history/history_widget.cpp
+index add584d185a15cab61f4f60bbe7d2dd11d09e588..fc523795f66683e9aa844ab3c35e4b9d05d44d85 100644
+--- a/Telegram/SourceFiles/history/history_widget.cpp
++++ b/Telegram/SourceFiles/history/history_widget.cpp
+@@ -207,6 +207,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "tele/tele_username_aliases.h"
+ #include "tele/tele_options.h"
+ #include "tele/tele_recover_forwarded.h"
++#include "tele/tele_show_pinned.h"
+ #include "media/audio/media_audio.h"
+ #include "media/audio/media_audio_capture.h"
+ #include "media/player/media_player_instance.h"
+@@ -513,6 +514,11 @@ HistoryWidget::HistoryWidget(
+ 	Tele::HideRecordButtonChanges() | rpl::on_next([=] {
+ 		updateSendButtonType();
+ 	}, lifetime());
++	Tele::PinnedBarRulesChanges() | rpl::on_next([=] {
++		if (_pinnedTracker && _list && _peer) {
++			checkPinnedBarState();
++		}
++	}, lifetime());
+ 	_reportMessages->addClickHandler([=] { reportSelectedMessages(); });
+ 	_field->submits(
+ 	) | rpl::on_next([=](Qt::KeyboardModifiers modifiers) {
+@@ -10219,7 +10225,7 @@ void HistoryWidget::checkPinnedBarState() {
+ 		: (_migrated && !peerIsChannel(currentPinnedId.peer))
+ 		? (currentPinnedId.msg - ServerMaxMsgId)
+ 		: currentPinnedId.msg;
+-	if (universalPinnedId == hiddenId) {
++	if (universalPinnedId == hiddenId || Tele::PinnedBarHidden(_peer)) {
+ 		if (_pinnedBar) {
+ 			_pinnedBar->setContent(rpl::single(Ui::MessageBarContent()));
+ 			_pinnedTracker->reset();
+diff --git a/Telegram/SourceFiles/history/view/controls/history_view_top_controls.cpp b/Telegram/SourceFiles/history/view/controls/history_view_top_controls.cpp
+index b0e37b74ccbecb28760db6b5893f5bedf697445c..104801bbc258a8ee0246c8f04bd5fd976a8c6478 100644
+--- a/Telegram/SourceFiles/history/view/controls/history_view_top_controls.cpp
++++ b/Telegram/SourceFiles/history/view/controls/history_view_top_controls.cpp
+@@ -45,6 +45,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "ui/chat/sponsored_message_bar.h"
+ #include "ui/wrap/slide_wrap.h"
+ #include "ui/widgets/buttons.h"
++#include "tele/tele_options.h"
++#include "tele/tele_show_pinned.h"
+ #include "ui/widgets/elastic_scroll.h"
+ #include "ui/widgets/popup_menu.h"
+ #include "window/window_peer_menu.h"
+@@ -176,6 +178,11 @@ void TopControls::subscribeToPinnedMessages() {
+ 			checkPinnedBarState();
+ 		}
+ 	}, _pinnedLifetime);
++	Tele::PinnedBarRulesChanges() | rpl::on_next([=] {
++		if (_pinnedTracker) {
++			checkPinnedBarState();
++		}
++	}, _pinnedLifetime);
+ 
+ 	setupPinnedTracker();
+ }
+@@ -814,7 +821,8 @@ void TopControls::checkPinnedBarState() {
+ 		: (migrated && !peerIsChannel(currentPinnedId.peer))
+ 		? (currentPinnedId.msg - ServerMaxMsgId)
+ 		: currentPinnedId.msg;
+-	if (universalPinnedId == hiddenId) {
++	if (universalPinnedId == hiddenId
++		|| Tele::PinnedBarHidden(_history->peer)) {
+ 		if (_pinnedBar) {
+ 			_pinnedBar->setContent(rpl::single(Ui::MessageBarContent()));
+ 			_pinnedTracker->reset();
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index b75f17163285ee60f29fbe72d63c460813b1a6a7..d30ba7bf03817ae1e3821f66a08d9b3f90a83ac6 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -3044,6 +3044,10 @@ void FillChats(SectionBuilder &builder) {
+ 		builder,
+ 		::Tele::kOptionPinnedBarMenu,
+ 		{ u"pinned messages"_q });
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionHidePinnedBar,
++		{ u"pinned messages"_q, u"pin"_q });
+ 	AddOptionToggle(
+ 		builder,
+ 		::Tele::kOptionSelectMany,
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index 87ed3a07615851fc9d79ecc2a03ca70ff4445431..e4c490ccba708e6c99249a7dbcb8437ff6bf7da5 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -242,6 +242,8 @@ const char kOptionBackgroundMenu[] = "tele-background-menu";
+ const char kOptionUsernameAliases[] = "tele-username-aliases";
+ const char kOptionAliasMenu[] = "tele-alias-menu";
+ const char kOptionPinnedBarMenu[] = "tele-pinned-bar-menu";
++const char kOptionHidePinnedBar[] = "tele-hide-pinned-bar";
++const char kOptionPinnedBarChats[] = "tele-pinned-bar-chats";
+ const char kOptionSelectMany[] = "tele-select-many";
+ const char kOptionQuickView[] = "tele-quick-view";
+ const char kOptionNoPhoneInHeader[] = "tele-no-phone-in-header";
+@@ -1730,10 +1732,22 @@ base::options::toggle AliasMenuOption({
+ base::options::toggle PinnedBarMenuOption({
+ 	.id = kOptionPinnedBarMenu,
+ 	.name = "Hide and show the pinned bar",
+-	.description = "From a chat's menu, in chats where you can't unpin.",
++	.description = "From a chat's menu, for that chat only.",
+ 	.defaultValue = true,
+ });
+ 
++base::options::toggle HidePinnedBarOption({
++	.id = kOptionHidePinnedBar,
++	.name = "Hide the pinned bar in all chats",
++	.description = "Pinned messages stay in the chat menu. Single chats "
++		"can still show the bar from their menu.",
++});
++
++base::options::option<QString> PinnedBarChatsOption({
++	.id = kOptionPinnedBarChats,
++	.name = "Pinned bar in chats",
++});
++
+ base::options::toggle SelectManyOption({
+ 	.id = kOptionSelectMany,
+ 	.name = "Select more than 100 messages",
+@@ -3840,6 +3854,24 @@ bool PinnedBarMenu() {
+ 	return PinnedBarMenuOption.value();
+ }
+ 
++bool HidePinnedBar() {
++	return HidePinnedBarOption.value();
++}
++
++QString PinnedBarChats() {
++	return PinnedBarChatsOption.value();
++}
++
++void SetPinnedBarChats(const QString &value) {
++	PinnedBarChatsOption.set(value);
++}
++
++rpl::producer<> PinnedBarRulesChanges() {
++	return rpl::merge(
++		HidePinnedBarOption.changes(),
++		PinnedBarChatsOption.changes());
++}
++
+ bool SelectMany() {
+ 	return SelectManyOption.value();
+ }
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index bf230c7780150dc9e6c2dae8a206709753abddce..1ef7c9055e6cfce12c031d3b0edbf23ddda9c7a1 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -237,6 +237,8 @@ extern const char kOptionBackgroundMenu[];
+ extern const char kOptionUsernameAliases[];
+ extern const char kOptionAliasMenu[];
+ extern const char kOptionPinnedBarMenu[];
++extern const char kOptionHidePinnedBar[];
++extern const char kOptionPinnedBarChats[];
+ extern const char kOptionSelectMany[];
+ extern const char kOptionQuickView[];
+ extern const char kOptionNoPhoneInHeader[];
+@@ -636,6 +638,10 @@ void SetUsernameAliases(const QString &value);
+ [[nodiscard]] bool BackgroundMenu();
+ [[nodiscard]] bool AliasMenu();
+ [[nodiscard]] bool PinnedBarMenu();
++[[nodiscard]] bool HidePinnedBar();
++[[nodiscard]] QString PinnedBarChats();
++void SetPinnedBarChats(const QString &value);
++[[nodiscard]] rpl::producer<> PinnedBarRulesChanges();
+ [[nodiscard]] bool SelectMany();
+ [[nodiscard]] bool QuickView();
+ [[nodiscard]] bool NoPhoneInHeader();
+diff --git a/Telegram/SourceFiles/tele/tele_pinned_bar_rules.cpp b/Telegram/SourceFiles/tele/tele_pinned_bar_rules.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..c79b757f13034a16395b8a54c517e52ebc7d97ac
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_pinned_bar_rules.cpp
+@@ -0,0 +1,47 @@
++#include "tele/tele_pinned_bar_rules.h"
++
++#include <QtCore/QStringList>
++
++namespace Tele {
++namespace {
++
++const auto kHide = QStringLiteral("hide");
++const auto kShow = QStringLiteral("show");
++
++} // namespace
++
++std::optional<bool> PinnedBarRule(const QString &rules, const QString &key) {
++	for (const auto &part : rules.split(QChar(','), Qt::SkipEmptyParts)) {
++		const auto pair = part.trimmed().split(QChar('='));
++		if (pair.size() != 2 || pair[0].trimmed() != key) {
++			continue;
++		}
++		const auto value = pair[1].trimmed();
++		if (value == kHide) {
++			return true;
++		} else if (value == kShow) {
++			return false;
++		}
++	}
++	return std::nullopt;
++}
++
++QString WithPinnedBarRule(
++		const QString &rules,
++		const QString &key,
++		std::optional<bool> hidden) {
++	auto result = QStringList();
++	for (const auto &part : rules.split(QChar(','), Qt::SkipEmptyParts)) {
++		const auto entry = part.trimmed();
++		const auto pair = entry.split(QChar('='));
++		if (pair.size() == 2 && pair[0].trimmed() != key) {
++			result.push_back(entry);
++		}
++	}
++	if (hidden && !key.isEmpty()) {
++		result.push_back(key + QChar('=') + (*hidden ? kHide : kShow));
++	}
++	return result.join(QChar(','));
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_pinned_bar_rules.h b/Telegram/SourceFiles/tele/tele_pinned_bar_rules.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..883b9436c3b3db8a8ea5d4911193015a59f8159d
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_pinned_bar_rules.h
+@@ -0,0 +1,17 @@
++#pragma once
++
++#include <QtCore/QString>
++
++#include <optional>
++
++namespace Tele {
++
++[[nodiscard]] std::optional<bool> PinnedBarRule(
++	const QString &rules,
++	const QString &key);
++[[nodiscard]] QString WithPinnedBarRule(
++	const QString &rules,
++	const QString &key,
++	std::optional<bool> hidden);
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index 0131b9348b4b3b08f9e193715e0d69bc3d362c13..8564bb73a0ba7aefe32cec14327f0dc7dbe33b6b 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -340,6 +340,7 @@ struct Spec {
+ 		Toggle(kOptionBackgroundMenu),
+ 		Toggle(kOptionAliasMenu),
+ 		Toggle(kOptionPinnedBarMenu),
++		Toggle(kOptionHidePinnedBar),
+ 		Toggle(kOptionSelectMany),
+ 		Toggle(kOptionQuickView),
+ 		Toggle(kOptionLocalNameMenu),
+@@ -431,6 +432,7 @@ struct Spec {
+ 		Internal(kOptionShotView),
+ 		Internal(kOptionViewerLoop),
+ 		Internal(kOptionTitleBuildHash),
++		Internal(kOptionPinnedBarChats),
+ 		Internal(kOptionReduceMotionSaved),
+ 		Internal(kOptionTranslateOutTo),
+ 		Internal(kOptionLocalPassword),
+diff --git a/Telegram/SourceFiles/tele/tele_show_pinned.cpp b/Telegram/SourceFiles/tele/tele_show_pinned.cpp
+index 544cbc0d09b49e0321212b91c0625c38e8569063..c5a47f1db5f4363e7933a4f967ec657ff32e3753 100644
+--- a/Telegram/SourceFiles/tele/tele_show_pinned.cpp
++++ b/Telegram/SourceFiles/tele/tele_show_pinned.cpp
+@@ -10,8 +10,8 @@
+ #include "main/main_session_settings.h"
+ #include "tele/tele_lowercase.h"
+ #include "tele/tele_options.h"
++#include "tele/tele_pinned_bar_rules.h"
+ #include "ui/widgets/menu/menu_add_action_callback.h"
+-#include "window/window_peer_menu.h"
+ #include "window/window_session_controller.h"
+ #include "styles/style_menu_icons.h"
+ 
+@@ -22,8 +22,22 @@ enum class PinnedBarState {
+ 	None,
+ 	Shown,
+ 	Hidden,
++	HiddenOnce,
+ };
+ 
++[[nodiscard]] QString PinnedBarKey(not_null<PeerData*> peer) {
++	return (peer->session().isTestMode() ? u"test:"_q : QString())
++		+ QString::number(peer->id.value);
++}
++
++void SetPinnedBarHidden(not_null<PeerData*> peer, bool hidden) {
++	const auto rule = (hidden == HidePinnedBar())
++		? std::optional<bool>()
++		: std::optional<bool>(hidden);
++	SetPinnedBarChats(
++		WithPinnedBarRule(PinnedBarChats(), PinnedBarKey(peer), rule));
++}
++
+ [[nodiscard]] MsgId TopicRootId(not_null<Data::Thread*> thread) {
+ 	const auto topic = thread->asTopic();
+ 	return topic ? topic->rootId() : MsgId(0);
+@@ -31,8 +45,7 @@ enum class PinnedBarState {
+ 
+ [[nodiscard]] PinnedBarState ResolveState(not_null<Data::Thread*> thread) {
+ 	const auto peer = thread->peer();
+-	if ((!thread->asHistory() && !thread->asTopic())
+-		|| peer->canPinMessages()) {
++	if (!thread->asHistory() && !thread->asTopic()) {
+ 		return PinnedBarState::None;
+ 	}
+ 	const auto topicRootId = TopicRootId(thread);
+@@ -49,12 +62,16 @@ enum class PinnedBarState {
+ 		: top.msg;
+ 	if (!universal) {
+ 		return PinnedBarState::None;
++	} else if (PinnedBarHidden(peer)) {
++		return PinnedBarState::Hidden;
++	} else if (peer->canPinMessages()) {
++		return PinnedBarState::Shown;
+ 	}
+ 	const auto hiddenId = peer->session().settings().hiddenPinnedMessageId(
+ 		peer->id,
+ 		topicRootId);
+ 	return (universal == hiddenId)
+-		? PinnedBarState::Hidden
++		? PinnedBarState::HiddenOnce
+ 		: PinnedBarState::Shown;
+ }
+ 
+@@ -66,6 +83,12 @@ void Refresh(not_null<Data::Thread*> thread) {
+ 
+ } // namespace
+ 
++bool PinnedBarHidden(not_null<PeerData*> peer) {
++	return PinnedBarRule(
++		PinnedBarChats(),
++		PinnedBarKey(peer)).value_or(HidePinnedBar());
++}
++
+ void AddPinnedBarAction(
+ 		not_null<Window::SessionController*> controller,
+ 		Data::Thread *thread,
+@@ -79,20 +102,10 @@ void AddPinnedBarAction(
+ 	const auto weak = base::make_weak(thread);
+ 	if (state == PinnedBarState::Shown) {
+ 		addAction(Tr(u"Hide pinned messages"_q), [=] {
+-			const auto strong = weak.get();
+-			if (!strong) {
+-				return;
++			if (const auto strong = weak.get()) {
++				SetPinnedBarHidden(strong->peer(), true);
++				Refresh(strong);
+ 			}
+-			Window::HidePinnedBar(
+-				controller,
+-				strong->peer(),
+-				TopicRootId(strong),
+-				PeerId(0),
+-				[=] {
+-					if (const auto strong = weak.get()) {
+-						Refresh(strong);
+-					}
+-				});
+ 		}, &st::menuIconUnpin);
+ 		return;
+ 	}
+@@ -102,6 +115,9 @@ void AddPinnedBarAction(
+ 			return;
+ 		}
+ 		const auto peer = strong->peer();
++		if (PinnedBarHidden(peer)) {
++			SetPinnedBarHidden(peer, false);
++		}
+ 		auto &session = peer->session();
+ 		session.settings().setHiddenPinnedMessageId(
+ 			peer->id,
+diff --git a/Telegram/SourceFiles/tele/tele_show_pinned.h b/Telegram/SourceFiles/tele/tele_show_pinned.h
+index 4e881c0427444de945b23f732eea8a48d5d91b82..7b9481b38f10eb3526a00fc28a3f1e8bdc446bca 100644
+--- a/Telegram/SourceFiles/tele/tele_show_pinned.h
++++ b/Telegram/SourceFiles/tele/tele_show_pinned.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++class PeerData;
++
+ namespace Data {
+ class Thread;
+ } // namespace Data
+@@ -14,6 +16,8 @@ class SessionController;
+ 
+ namespace Tele {
+ 
++[[nodiscard]] bool PinnedBarHidden(not_null<PeerData*> peer);
++
+ void AddPinnedBarAction(
+ 	not_null<Window::SessionController*> controller,
+ 	Data::Thread *thread,
+diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+index 929e8d672bccd22abc0c4c4b6ecf202a310f5eb7..79056c697b24b28b52608f8678312d62d01d29cd 100644
+--- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
++++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+@@ -1,5 +1,6 @@
+ #include "tele/tele_single_paths.h"
+ #include "tele/tele_wav_music.h"
++#include "tele/tele_pinned_bar_rules.h"
+ 
+ #include <cstdio>
+ #include <cstdlib>
+@@ -35,10 +36,29 @@ void TestWavFiles() {
+ 	Require(!IsWavFile(QString(), QString()), "empty");
+ }
+ 
++void TestPinnedBarRules() {
++	using Tele::PinnedBarRule;
++	using Tele::WithPinnedBarRule;
++	const auto a = QStringLiteral("1");
++	const auto b = QStringLiteral("test:2");
++	Require(!PinnedBarRule(QString(), a).has_value(), "empty rules");
++	auto rules = WithPinnedBarRule(QString(), a, true);
++	Require(PinnedBarRule(rules, a) == std::optional<bool>(true), "hide rule");
++	rules = WithPinnedBarRule(rules, b, false);
++	Require(PinnedBarRule(rules, b) == std::optional<bool>(false), "show rule");
++	Require(PinnedBarRule(rules, a) == std::optional<bool>(true), "other rule kept");
++	rules = WithPinnedBarRule(rules, a, std::nullopt);
++	Require(!PinnedBarRule(rules, a).has_value(), "rule removed");
++	Require(rules == QStringLiteral("test:2=show"), "serialized");
++	Require(!PinnedBarRule(QStringLiteral("1=maybe,=hide"), a).has_value(), "broken rules");
++	Require(!PinnedBarRule(rules, QStringLiteral("2")).has_value(), "test key differs");
++}
++
+ } // namespace
+ 
+ int main() {
+ 	TestSinglePaths();
+ 	TestWavFiles();
++	TestPinnedBarRules();
+ 	return 0;
+ }
+diff --git a/Telegram/cmake/mad_tests.cmake b/Telegram/cmake/mad_tests.cmake
+index 5ee0bd742016d44d9d24ef2d0b7fc3eb1d4daa04..deed47734aac77a1b636a9d224e4a52b644ada2e 100644
+--- a/Telegram/cmake/mad_tests.cmake
++++ b/Telegram/cmake/mad_tests.cmake
+@@ -46,6 +46,7 @@ target_include_directories(mad_logic_tests PRIVATE ${src_loc})
+ target_sources(mad_logic_tests PRIVATE
+     ${src_loc}/tele/tele_single_paths.cpp
+     ${src_loc}/tele/tele_wav_music.cpp
++    ${src_loc}/tele/tele_pinned_bar_rules.cpp
+     ${src_loc}/tele/tests/mad_logic_tests.cpp
+ )
+ target_link_libraries(mad_logic_tests PRIVATE

@@ -531,6 +531,7 @@ everything else.
 | [401](../patches/tdesktop/0401-feat-wav-files-play-as-music-tracks.patch) | wav files are sent as music and shown as tracks in the player, received wav files become tracks too | settings → mad → chats, on |
 | [402](../patches/tdesktop/0402-fix-telegram-links-from-a-badge-card-open-in-mad.patch) | t.me and telegram.me links from a mad badge card open in mad instead of the browser | badge card |
 | [403](../patches/tdesktop/0403-feat-hide-the-voice-message-button.patch) | hides the voice and video message button in the message field, the send button stays in its place | settings → mad → sending, off |
+| [404](../patches/tdesktop/0404-feat-hide-the-pinned-bar-in-all-chats-or-in-one.patch) | hides the pinned bar in all chats; a single chat can hide it or bring it back from its menu, now also in chats where you can unpin | settings → mad → chats, off |
 | [1006](../patches/Telegram/lib_ui/0006-feat-let-scripts-swap-label-texts-and-find-full-widt.patch) | text a script changed in tele's windows comes back exactly as it was, formatting and custom emoji included, when the script stops, and rows a script adds to info tables stay above their last full-width line | with 301 |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1011](../patches/Telegram/lib_ui/0009-feat-let-labels-pick-their-text-pen-per-paint.patch) | the part of animated profile names that lives in the ui library | with 390 |
