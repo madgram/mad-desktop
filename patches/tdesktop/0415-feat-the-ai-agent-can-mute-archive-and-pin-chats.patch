@@ -1,0 +1,359 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "hello, i am forgotten" <me@thisisforgotten.com>
+Date: Thu, 19 Nov 2026 18:56:33 +0300
+Subject: [PATCH] feat: the ai agent can mute, archive and pin chats
+
+---
+ Telegram/Resources/langs/mad_ru.json          |  12 +-
+ .../SourceFiles/settings/settings_tele.cpp    |   4 +
+ .../SourceFiles/tele/agent/agent_store.cpp    |   4 +
+ Telegram/SourceFiles/tele/agent/agent_store.h |   1 +
+ .../SourceFiles/tele/agent/agent_tools.cpp    | 184 ++++++++++++++++++
+ Telegram/SourceFiles/tele/agent/agent_tools.h |   4 +
+ Telegram/SourceFiles/tele/tele_options.cpp    |   8 +
+ Telegram/SourceFiles/tele/tele_options.h      |   1 +
+ .../SourceFiles/tele/tele_settings_io.cpp     |   1 +
+ 9 files changed, 218 insertions(+), 1 deletion(-)
+
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 6782a74191f3bc0d072298fb30aa51451bdd9f47..5c6cfca9771ca57a9607a54f1be43f778fbce757 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2307,5 +2307,15 @@
+   "What the agent can do": "Что агенту можно",
+   "Official": "Официальный",
+   "Anthropic-compatible": "Совместимый с Anthropic",
+-  "OpenAI-compatible": "Совместимый с OpenAI"
++  "OpenAI-compatible": "Совместимый с OpenAI",
++  "Manage chats": "Управлять чатами",
++  "The agent can mark chats read or unread, mute, archive and pin them when you ask.": "Агент может отмечать чаты прочитанными и непрочитанными, выключать в них звук, убирать в архив и закреплять, когда ты попросишь.",
++  "Marked %1 as read": "Отметил %1 прочитанным",
++  "Marked %1 as unread": "Отметил %1 непрочитанным",
++  "Muted %1": "Выключил звук в %1",
++  "Unmuted %1": "Включил звук в %1",
++  "Archived %1": "Убрал %1 в архив",
++  "Unarchived %1": "Вернул %1 из архива",
++  "Pinned %1": "Закрепил %1",
++  "Unpinned %1": "Открепил %1"
+ }
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index 433900c8c89cf904eb86c744ab92b19f33e08f15..6e9811ba7c2998c1db391b1960ccdbafa8fa3df2 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -4650,6 +4650,10 @@ void FillAgent(SectionBuilder &builder) {
+ 		{ u"ai"_q, u"confirm"_q },
+ 		::Tele::kOptionAgentSend);
+ 	AddOptionToggle(builder, ::Tele::kOptionAgentWebSearch, { u"ai"_q });
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionAgentChatActions,
++		{ u"ai"_q, u"mute"_q, u"archive"_q, u"pin"_q });
+ 	AddGroupDivider(builder);
+ }
+ 
+diff --git a/Telegram/SourceFiles/tele/agent/agent_store.cpp b/Telegram/SourceFiles/tele/agent/agent_store.cpp
+index cf199f13fa64ad50634b5e94cd8219d092559966..83225de06c3436d85f09b069f61d5b9dbccfcb97 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_store.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_store.cpp
+@@ -173,4 +173,8 @@ bool AllowWebSearch() {
+ 	return OptionOn(kOptionAgentWebSearch);
+ }
+ 
++bool AllowChatActions() {
++	return OptionOn(kOptionAgentChatActions);
++}
++
+ } // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_store.h b/Telegram/SourceFiles/tele/agent/agent_store.h
+index 8a744004ea7cfdf87b62cd5bebdf16f003d04d33..fac7bc9099a0c31bb15c47d432c7f2a94f954aa7 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_store.h
++++ b/Telegram/SourceFiles/tele/agent/agent_store.h
+@@ -38,5 +38,6 @@ private:
+ [[nodiscard]] bool AllowSendMessages();
+ [[nodiscard]] bool SendWithoutConfirmation();
+ [[nodiscard]] bool AllowWebSearch();
++[[nodiscard]] bool AllowChatActions();
+ 
+ } // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.cpp b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
+index cba2c0e665a1ecdaf5f4da64a50d74fb097bd75e..0b8c3baff564a4fd8082d1ae987352b9ef77f9b6 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_tools.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
+@@ -4,9 +4,12 @@
+ #include "apiwrap.h"
+ #include "base/unixtime.h"
+ #include "data/data_peer.h"
++#include "data/data_histories.h"
+ #include "data/data_session.h"
+ #include "data/data_types.h"
+ #include "data/data_user.h"
++#include "data/notify/data_notify_settings.h"
++#include "data/notify/data_peer_notify_settings.h"
+ #include "dialogs/dialogs_indexed_list.h"
+ #include "dialogs/dialogs_main_list.h"
+ #include "dialogs/dialogs_row.h"
+@@ -257,6 +260,84 @@ std::vector<ToolSpec> ToolSpecs() {
+ 			}, { u"chat_id"_q, u"text"_q }),
+ 		});
+ 	}
++	if (AllowChatActions()) {
++		result.push_back({
++			u"mark_read"_q,
++			u"Mark all messages in a chat as read."_q,
++			Schema(QJsonObject{
++				{ u"chat_id"_q, Property(
++					u"string"_q,
++					u"chat_id from list_chats or search_chats."_q) },
++			}, { u"chat_id"_q }),
++		});
++		result.push_back({
++			u"mark_unread"_q,
++			u"Mark a chat as unread."_q,
++			Schema(QJsonObject{
++				{ u"chat_id"_q, Property(
++					u"string"_q,
++					u"chat_id from list_chats or search_chats."_q) },
++			}, { u"chat_id"_q }),
++		});
++		result.push_back({
++			u"mute"_q,
++			u"Mute notifications from a chat, forever or for some minutes."_q,
++			Schema(QJsonObject{
++				{ u"chat_id"_q, Property(
++					u"string"_q,
++					u"chat_id from list_chats or search_chats."_q) },
++				{ u"minutes"_q, Property(
++					u"integer"_q,
++					u"Mute for this many minutes. Leave it out to mute "
++					"forever."_q) },
++			}, { u"chat_id"_q }),
++		});
++		result.push_back({
++			u"unmute"_q,
++			u"Turn notifications from a chat back on."_q,
++			Schema(QJsonObject{
++				{ u"chat_id"_q, Property(
++					u"string"_q,
++					u"chat_id from list_chats or search_chats."_q) },
++			}, { u"chat_id"_q }),
++		});
++		result.push_back({
++			u"archive"_q,
++			u"Move a chat to the archive."_q,
++			Schema(QJsonObject{
++				{ u"chat_id"_q, Property(
++					u"string"_q,
++					u"chat_id from list_chats or search_chats."_q) },
++			}, { u"chat_id"_q }),
++		});
++		result.push_back({
++			u"unarchive"_q,
++			u"Move a chat out of the archive."_q,
++			Schema(QJsonObject{
++				{ u"chat_id"_q, Property(
++					u"string"_q,
++					u"chat_id from list_chats or search_chats."_q) },
++			}, { u"chat_id"_q }),
++		});
++		result.push_back({
++			u"pin"_q,
++			u"Pin a chat at the top of the chat list."_q,
++			Schema(QJsonObject{
++				{ u"chat_id"_q, Property(
++					u"string"_q,
++					u"chat_id from list_chats or search_chats."_q) },
++			}, { u"chat_id"_q }),
++		});
++		result.push_back({
++			u"unpin"_q,
++			u"Unpin a chat from the top of the chat list."_q,
++			Schema(QJsonObject{
++				{ u"chat_id"_q, Property(
++					u"string"_q,
++					u"chat_id from list_chats or search_chats."_q) },
++			}, { u"chat_id"_q }),
++		});
++	}
+ 	result.push_back({
+ 		u"remind"_q,
+ 		u"Remind the user about something later: a scheduled message to "
+@@ -344,6 +425,16 @@ void Tools::execute(
+ 		sendMessage(args, true, std::move(confirm), std::move(done));
+ 	} else if (name == u"remind"_q) {
+ 		remind(args, std::move(done));
++	} else if (AllowChatActions()
++		&& ((name == u"mark_read"_q)
++			|| (name == u"mark_unread"_q)
++			|| (name == u"mute"_q)
++			|| (name == u"unmute"_q)
++			|| (name == u"archive"_q)
++			|| (name == u"unarchive"_q)
++			|| (name == u"pin"_q)
++			|| (name == u"unpin"_q))) {
++		chatAction(name, args, std::move(done));
+ 	} else {
+ 		done(Error(u"This tool is not available."_q));
+ 	}
+@@ -642,4 +733,97 @@ void Tools::remind(const QJsonObject &args, Fn<void(ToolOutcome)> done) {
+ 	});
+ }
+ 
++void Tools::chatAction(
++		const QString &name,
++		const QJsonObject &args,
++		Fn<void(ToolOutcome)> done) {
++	const auto peer = PeerFromArgs(_session, args);
++	if (!peer) {
++		done(Error(u"Unknown chat_id."_q));
++		return;
++	}
++	const auto history = _session->data().history(peer);
++	const auto title = Title(peer);
++	if (name == u"mark_read"_q) {
++		_session->data().histories().readInbox(history);
++		done({
++			.content = u"Marked as read."_q,
++			.title = Tr(u"Marked %1 as read"_q).arg(title),
++		});
++	} else if (name == u"mark_unread"_q) {
++		_session->data().histories().changeDialogUnreadMark(history, true);
++		done({
++			.content = u"Marked as unread."_q,
++			.title = Tr(u"Marked %1 as unread"_q).arg(title),
++		});
++	} else if (name == u"mute"_q) {
++		const auto minutes = std::max(args.value(u"minutes"_q).toInt(), 0);
++		_session->data().notifySettings().update(
++			peer,
++			minutes
++				? Data::MuteValue{ .period = minutes * 60 }
++				: Data::MuteValue{ .forever = true });
++		done({
++			.content = minutes
++				? u"Muted for %1 minutes."_q.arg(minutes)
++				: u"Muted."_q,
++			.title = Tr(u"Muted %1"_q).arg(title),
++		});
++	} else if (name == u"unmute"_q) {
++		_session->data().notifySettings().update(
++			peer,
++			Data::MuteValue{ .unmute = true });
++		done({
++			.content = u"Unmuted."_q,
++			.title = Tr(u"Unmuted %1"_q).arg(title),
++		});
++	} else if ((name == u"archive"_q) || (name == u"unarchive"_q)) {
++		const auto archive = (name == u"archive"_q);
++		const auto outcome = ToolOutcome{
++			.content = archive ? u"Archived."_q : u"Unarchived."_q,
++			.title = archive
++				? Tr(u"Archived %1"_q).arg(title)
++				: Tr(u"Unarchived %1"_q).arg(title),
++		};
++		if ((history->folder() != nullptr) == archive) {
++			done(outcome);
++			return;
++		}
++		const auto weak = base::make_weak(this);
++		_session->api().toggleHistoryArchived(history, archive, [=] {
++			if (weak) {
++				done(outcome);
++			}
++		});
++	} else {
++		const auto pin = (name == u"pin"_q);
++		const auto outcome = ToolOutcome{
++			.content = pin ? u"Pinned."_q : u"Unpinned."_q,
++			.title = pin
++				? Tr(u"Pinned %1"_q).arg(title)
++				: Tr(u"Unpinned %1"_q).arg(title),
++		};
++		if (history->isPinnedDialog(FilterId()) == pin) {
++			done(outcome);
++			return;
++		}
++		auto &owner = _session->data();
++		if (pin && !owner.pinnedCanPin(history)) {
++			done(Error(u"The limit of pinned chats is reached."_q));
++			return;
++		}
++		owner.setChatPinned(history, FilterId(), pin);
++		const auto session = _session;
++		_session->api().request(MTPmessages_ToggleDialogPin(
++			MTP_flags(pin
++				? MTPmessages_ToggleDialogPin::Flag::f_pinned
++				: MTPmessages_ToggleDialogPin::Flag(0)),
++			MTP_inputDialogPeer(peer->input())
++		)).done([=] {
++			session->data().notifyPinnedDialogsOrderUpdated();
++		}).send();
++		done(outcome);
++	}
++}
++
+ } // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.h b/Telegram/SourceFiles/tele/agent/agent_tools.h
+index 0bebc7e01333ba523d72f6a456aaa94bec87a956..87330655830f9d3b8fb9b0560808c205cd0412dc 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_tools.h
++++ b/Telegram/SourceFiles/tele/agent/agent_tools.h
+@@ -49,6 +49,10 @@ private:
+ 		Confirm confirm,
+ 		Fn<void(ToolOutcome)> done);
+ 	void remind(const QJsonObject &args, Fn<void(ToolOutcome)> done);
++	void chatAction(
++		const QString &name,
++		const QJsonObject &args,
++		Fn<void(ToolOutcome)> done);
+ 
+ 	const not_null<Main::Session*> _session;
+ 
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index 45591e5652183c3314871ed5232d67dbeef65574..9c2f8126d1b3f9939083429840185cd0d773d88b 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -22,6 +22,7 @@ const char kOptionAgentReadChats[] = "tele-agent-read-chats";
+ const char kOptionAgentSend[] = "tele-agent-send";
+ const char kOptionAgentSendUnconfirmed[] = "tele-agent-send-unconfirmed";
+ const char kOptionAgentWebSearch[] = "tele-agent-web-search";
++const char kOptionAgentChatActions[] = "tele-agent-chat-actions";
+ 
+ 
+ const char kOptionHideStories[] = "tele-hide-stories";
+@@ -853,6 +854,13 @@ base::options::toggle AgentWebSearchOption({
+ 	.defaultValue = true,
+ });
+ 
++base::options::toggle AgentChatActionsOption({
++	.id = kOptionAgentChatActions,
++	.name = "Manage chats",
++	.description = "The agent can mark chats read or unread, mute, "
++		"archive and pin them when you ask.",
++});
++
+ base::options::toggle SmoothScrollOption({
+ 	.id = kOptionSmoothScroll,
+ 	.name = "Smooth wheel scrolling",
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index ed6d166d9f12e6b7e66b1382e41c2172b8b98365..e8aeea3e1ed04c93a5ea683bc6ce41781df31f00 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -18,6 +18,7 @@ extern const char kOptionAgentReadChats[];
+ extern const char kOptionAgentSend[];
+ extern const char kOptionAgentSendUnconfirmed[];
+ extern const char kOptionAgentWebSearch[];
++extern const char kOptionAgentChatActions[];
+ [[nodiscard]] bool MadBadgesEnabled();
+ 
+ extern const char kOptionHideStories[];
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index da2ed72df2fb96b369aaf1464f2d5c5d02a3d435..b1dc8cdaabfa2da32fcaa1c77664504a8e2eab41 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -303,6 +303,7 @@ struct Spec {
+ 		Toggle(kOptionAgentSend),
+ 		Toggle(kOptionAgentSendUnconfirmed),
+ 		Toggle(kOptionAgentWebSearch),
++		Toggle(kOptionAgentChatActions),
+ 		Toggle(kOptionHideForeignAgent),
+ 		Toggle(kOptionHideBirthdays),
+ 		Toggle(kOptionSilentByDefault),
