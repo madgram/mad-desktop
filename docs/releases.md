@@ -2,7 +2,7 @@
 
 every tele patch, grouped by the release that brought it, newest first. [features](features.md) has the same rows grouped by settings page. release notes and the in-app what's new are made from these rows, so their format is strict: see [the patch row](development.md#the-patch-row).
 
-all 416 patches, newest release first.
+all 417 patches, newest release first.
 
 ### [mad dev](mad.md)
 
@@ -78,6 +78,7 @@ all 416 patches, newest release first.
 | [403](../patches/tdesktop/0403-feat-hide-the-voice-message-button.patch) | hides the voice and video message button in the message field, the send button stays in its place | settings → mad → sending, off |
 | [404](../patches/tdesktop/0404-feat-hide-the-pinned-bar-in-all-chats-or-in-one.patch) | hides the pinned bar in all chats; a single chat can hide it or bring it back from its menu, now also in chats where you can unpin | settings → mad → chats, off |
 | [405](../patches/tdesktop/0405-feat-hide-foreign-agent-labels.patch) | hides foreign agent disclaimers, ministry of justice footnotes and 18+ marks in messages and chat previews, like mad for ios; copying and forwarding keep the original text | settings → mad → chats, off |
+| [406](../patches/tdesktop/0406-feat-mad-settings-show-what-each-option-does-right-u.patch) | mad settings show what each option does in a gray line right under it instead of behind a question mark | settings → mad |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1009](../patches/Telegram/lib_rpl/0001-fix-topic-tabs-no-longer-crash-after-you-move-them.patch) | topic and direct message tabs no longer crash after you move them to the top, bottom or side and then scroll them. the cause was in the library that passes events around, so anything else that lost updates the same way is fixed too | always on |
 | [1010](../patches/Telegram/ThirdParty/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs/0001-fix-refuse-await-using-outside-async-functions.patch) | closes the quickjs hole that let a bot's message widget run any program on your pc: the engine gets telegram's own `await using` fix from widget-sandbox 0.6.4, which telegram desktop 7.4.2 ships without | always on |

@@ -1,0 +1,334 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:21:52 +0200
+Subject: [PATCH] feat: mad settings show what each option does right under it
+
+---
+ Telegram/Resources/art/mad_help.svg           |   1 -
+ Telegram/Resources/qrc/telegram/telegram.qrc  |   1 -
+ Telegram/SourceFiles/settings/settings.style  |   3 -
+ .../SourceFiles/settings/settings_tele.cpp    |  42 ++++---
+ .../tele/tele_settings_widgets.cpp            | 118 ++++--------------
+ .../SourceFiles/tele/tele_settings_widgets.h  |   9 +-
+ 6 files changed, 52 insertions(+), 122 deletions(-)
+ delete mode 100644 Telegram/Resources/art/mad_help.svg
+
+diff --git a/Telegram/Resources/art/mad_help.svg b/Telegram/Resources/art/mad_help.svg
+deleted file mode 100644
+index d36ce6ab37d963a6b301312319f9968e4d64e307..0000000000000000000000000000000000000000
+--- a/Telegram/Resources/art/mad_help.svg
++++ /dev/null
+@@ -1 +0,0 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="m12.33 12.15-2.47 2.47a3.495 3.495 0 0 0 0 4.95 3.495 3.495 0 0 0 4.95 0l3.89-3.89a7.007 7.007 0 0 0 0-9.9 7.007 7.007 0 0 0-9.9 0l-4.24 4.24c-2.34 2.34-2.34 6.14 0 8.49" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+diff --git a/Telegram/Resources/qrc/telegram/telegram.qrc b/Telegram/Resources/qrc/telegram/telegram.qrc
+index 0d2f5783f58ba048f3313e46c698fc02d7372eed..3b1f6483900931849a313a0099c2c359382d6f87 100644
+--- a/Telegram/Resources/qrc/telegram/telegram.qrc
++++ b/Telegram/Resources/qrc/telegram/telegram.qrc
+@@ -6,7 +6,6 @@
+     <file alias="art/bg_initial.jpg">../../art/bg_initial.jpg</file>
+     <file alias="art/business_logo.png">../../art/business_logo.png</file>
+     <file alias="art/affiliate_logo.png">../../art/affiliate_logo.png</file>
+-    <file alias="art/mad_help.svg">../../art/mad_help.svg</file>
+     <file alias="art/mad.png">../../art/mad.png</file>
+     <file alias="art/logo_256.png">../../art/logo_256.png</file>
+     <file alias="art/logo_256_no_margin.png">../../art/logo_256_no_margin.png</file>
+diff --git a/Telegram/SourceFiles/settings/settings.style b/Telegram/SourceFiles/settings/settings.style
+index 3fd7ae9d1d8e1d1e72945a36a4e8eea4ee206559..f9622d1854e1f16ce02c3d47fe254860e535ad3f 100644
+--- a/Telegram/SourceFiles/settings/settings.style
++++ b/Telegram/SourceFiles/settings/settings.style
+@@ -770,6 +770,3 @@ detailedSettingsButtonStyle: DetailedSettingsButtonStyle {
+ }
+ 
+ settingsToastStarIcon: icon {{ "toast/star", toastFg }};
+-
+-madSettingHelpSize: 28px;
+-madSettingHelpInset: 2px;
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index 87e462fa0fa4ec3b1eb03826b0479030ca3c86f4..d21fe018b857f6c803ed9b74ba170e78a96331a0 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -689,21 +689,19 @@ struct OptionRow {
+ 	Ui::FlatLabel *about = nullptr;
+ };
+ 
+-using ::Tele::AddSettingHelp;
++using ::Tele::AddSettingAbout;
+ 
+ [[nodiscard]] OptionRow CreateOptionRow(
+ 		not_null<QWidget*> parent,
+-		not_null<Window::SessionController*> controller,
+ 		const QString &name,
+ 		const QString &description) {
+ 	auto result = object_ptr<::Tele::SettingButton>(parent, nullptr, st::settingsButtonNoIcon);
+ 	const auto button = result.data();
+-	const auto helpWidth = description.isEmpty() ? 0 : st::madSettingHelpSize;
+ 	const auto right = st::rightsButtonToggleWidth;
+ 	const auto title = ::Tele::SetupSettingText(button,
+-		rpl::single(TextWithEntities::Simple(name)), nullptr, right + helpWidth);
+-	AddSettingHelp(button, controller, name, description, right);
+-	return { std::move(result), button, title };
++		rpl::single(TextWithEntities::Simple(name)), nullptr, right);
++	const auto about = AddSettingAbout(button, description);
++	return { std::move(result), button, title, about };
+ }
+ 
+ [[nodiscard]] Fn<void()> OptionRestarter(
+@@ -737,7 +735,7 @@ void AddOptionToggleRow(
+ 	const auto description = ::Tele::Tr(option.description());
+ 	builder.add([&](const WidgetContext &ctx) {
+ 		const auto controller = ctx.controller;
+-		auto row = CreateOptionRow(ctx.container, controller, name, description);
++		auto row = CreateOptionRow(ctx.container, name, description);
+ 		const auto button = row.button;
+ 		const auto title = row.title;
+ 		const auto about = row.about;
+@@ -829,13 +827,11 @@ struct GroupState {
+ 		auto button = (Button*)nullptr;
+ 		auto title = (Ui::FlatLabel*)nullptr;
+ 		auto about = (Ui::FlatLabel*)nullptr;
+-		const auto helpWidth = description.isEmpty() ? 0 : st::madSettingHelpSize;
+ 		auto owned = object_ptr<::Tele::SettingButton>(ctx.container, nullptr, st);
+ 		button = owned.data();
+-		title = ::Tele::SetupSettingText(button, std::move(text), nullptr, right + helpWidth);
++		title = ::Tele::SetupSettingText(button, std::move(text), nullptr, right);
++		about = AddSettingAbout(button, description);
+ 		widget = std::move(owned);
+-		AddSettingHelp(button, controller, name, description,
+-			st::rightsButtonToggleWidth + st::rightsButtonArrowSkip);
+ 		const auto root = widget.data();
+ 		root->lifetime().add([state] {});
+ 
+@@ -905,7 +901,7 @@ struct GroupState {
+ 				st::lineWidth,
+ 				line);
+ 			const auto skip = st::rightsButtonArrowSkip;
+-			const auto limit = toggleButton->x() - skip - arrow->width() - helpWidth;
++			const auto limit = toggleButton->x() - skip - arrow->width();
+ 			arrow->moveToLeft(limit, (height - arrow->height()) / 2);
+ 		};
+ 		root->sizeValue() | rpl::on_next([=] {
+@@ -1074,16 +1070,24 @@ void AddAbout(
+ 	builder.add([&](const WidgetContext &ctx) {
+ 		for (const auto child : ctx.container->findChildren<QWidget*>()) {
+ 			const auto button = dynamic_cast<Button*>(child);
+-			if (!button || button->property("mad-setting-id").toString() != owner
+-					|| button->property("mad-help-width").toInt()) {
++			if (!button
++				|| button->property("mad-setting-id").toString() != owner
++				|| button->property("mad-text-about").value<QObject*>()) {
+ 				continue;
++			} else if (button->property("mad-text-title").value<QObject*>()) {
++				AddSettingAbout(button, text);
++				return SectionBuilder::WidgetToAdd{};
+ 			}
+-			button->setProperty("mad-help-width", st::madSettingHelpSize);
+-			AddSettingHelp(button, ctx.controller, button->accessibleName(), text,
+-				button->st().padding.right());
+ 			break;
+ 		}
+-		return SectionBuilder::WidgetToAdd{};
++		const auto &padding = st::settingsButtonNoIcon.padding;
++		return SectionBuilder::WidgetToAdd{
++			.widget = object_ptr<Ui::FlatLabel>(
++				ctx.container,
++				text,
++				st::settingsExperimentalAbout),
++			.margin = QMargins(padding.left(), 0, padding.right(), 0),
++		};
+ 	}, nullptr);
+ }
+ 
+@@ -4078,7 +4082,7 @@ void AddDebugLogs(SectionBuilder &builder) {
+ 	const auto description = ::Tele::Tr(u"Turning them off restarts the app."_q);
+ 	builder.add([&](const WidgetContext &ctx) {
+ 		const auto controller = ctx.controller;
+-		auto row = CreateOptionRow(ctx.container, controller, name, description);
++		auto row = CreateOptionRow(ctx.container, name, description);
+ 		const auto button = row.button;
+ 		const auto state = button->lifetime().make_state<
+ 			rpl::variable<bool>>(Logs::DebugEnabled());
+diff --git a/Telegram/SourceFiles/tele/tele_settings_widgets.cpp b/Telegram/SourceFiles/tele/tele_settings_widgets.cpp
+index 6720f8f1ff789cd7a854520e9238118b30c5e141..f40309496df498d5491ba01023188c2238fa4a1b 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_widgets.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_widgets.cpp
+@@ -2,15 +2,12 @@
+ 
+ #include "base/event_filter.h"
+ #include "base/options.h"
+-#include "base/timer.h"
+ #include "settings/settings_common.h"
+ #include "settings/settings_tele.h"
+ #include "tele/tele_lowercase.h"
+ #include "tele/tele_options.h"
+-#include "ui/layers/generic_box.h"
+ #include "ui/widgets/popup_menu.h"
+ #include "ui/widgets/shadow.h"
+-#include "ui/widgets/tooltip.h"
+ #include "ui/wrap/slide_wrap.h"
+ #include "ui/wrap/vertical_layout.h"
+ #include "window/window_session_controller.h"
+@@ -20,9 +17,6 @@
+ #include "styles/style_menu_icons.h"
+ #include "styles/style_widgets.h"
+ #include "styles/style_window_main_menu.h"
+-#include <QtCore/QFile>
+-#include <QtGui/QPainter>
+-#include <QtSvg/QSvgRenderer>
+ 
+ namespace Tele {
+ 
+@@ -52,7 +46,7 @@ Ui::FlatLabel *SetupSettingText(
+ 		*busy = true;
+ 		const auto &style = button->st();
+ 		const auto left = style.padding.left();
+-		const auto reserved = right + button->property("mad-help-width").toInt();
++		const auto reserved = right;
+ 		const auto width = std::max(1, button->width() - left - reserved);
+ 		title->resizeToWidth(width);
+ 		title->moveToLeft(left, style.padding.top());
+@@ -62,6 +56,13 @@ Ui::FlatLabel *SetupSettingText(
+ 			label->moveToLeft(left, style.padding.top() + height + st::lineWidth * 3);
+ 			height += label->height() + st::lineWidth * 3;
+ 		}
++		const auto about = qobject_cast<Ui::FlatLabel*>(
++			button->property("mad-text-about").value<QObject*>());
++		if (about) {
++			about->resizeToWidth(width);
++			about->moveToLeft(left, style.padding.top() + height + st::lineWidth * 3);
++			height += about->height() + st::lineWidth * 3;
++		}
+ 		button->setPaddingOverride({ left, style.padding.top(), reserved,
+ 			style.padding.bottom() + std::max(0, height - style.height) });
+ 		button->setAccessibleName(title->accessibilityName());
+@@ -81,93 +82,26 @@ Ui::FlatLabel *SetupSettingText(
+ 	return title;
+ }
+ 
+-Ui::AbstractButton *AddSettingHelp(
+-		not_null<Ui::RpWidget*> parent,
+-		not_null<Window::SessionController*> controller,
+-		const QString &name,
+-		const QString &description,
+-		int right) {
+-	if (description.isEmpty()) {
++Ui::FlatLabel *AddSettingAbout(
++		not_null<Ui::SettingsButton*> button,
++		const QString &text) {
++	if (text.isEmpty()) {
+ 		return nullptr;
+ 	}
+-	const auto help = Ui::CreateChild<Ui::AbstractButton>(parent);
+-	help->resize(st::madSettingHelpSize, st::madSettingHelpSize);
+-	help->setAccessibleName(name + u": "_q + description);
+-	help->setFocusPolicy(Qt::StrongFocus);
+-	parent->sizeValue() | rpl::on_next([=](QSize size) {
+-		help->moveToRight(right, (size.height() - help->height()) / 2);
+-	}, help->lifetime());
+-	help->paintRequest() | rpl::on_next([=] {
+-		static auto image = QImage();
+-		static auto color = QColor();
+-		const auto scale = help->devicePixelRatioF();
+-		const auto size = help->size() * scale;
+-		const auto next = st::windowSubTextFg->c;
+-		if (image.size() != size || image.devicePixelRatio() != scale || color != next) {
+-			auto file = QFile(u":/gui/art/mad_help.svg"_q);
+-			auto data = file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+-			data.replace("currentColor", next.name().toLatin1());
+-			image = QImage(size, QImage::Format_ARGB32_Premultiplied);
+-			image.setDevicePixelRatio(scale);
+-			image.fill(Qt::transparent);
+-			auto painter = QPainter(&image);
+-			auto svg = QSvgRenderer(data);
+-			const auto skip = st::madSettingHelpInset;
+-			svg.render(&painter, QRectF(help->rect().marginsRemoved({skip, skip, skip, skip})));
+-			color = next;
+-		}
+-		auto painter = QPainter(help);
+-		painter.drawImage(QPoint(), image);
+-	}, help->lifetime());
+-	struct State {
+-		std::unique_ptr<Ui::ImportantTooltip> tooltip;
+-		base::Timer timer;
+-	};
+-	const auto state = help->lifetime().make_state<State>();
+-	const auto hide = [=] {
+-		state->timer.cancel();
+-		if (state->tooltip) {
+-			state->tooltip->toggleAnimated(false);
+-		}
+-	};
+-	state->timer.setCallback([=] {
+-		if (!help->isVisible() || !help->window()->isActiveWindow()) {
+-			return;
+-		}
+-		const auto window = help->window();
+-		if (!state->tooltip) {
+-			const auto preview = description.size() > 180
+-				? description.left(177) + u"…"_q : description;
+-			state->tooltip = std::make_unique<Ui::ImportantTooltip>(window,
+-				Ui::MakeNiceTooltipLabel(window,
+-					rpl::single(TextWithEntities::Simple(preview)),
+-					st::boxWidth * 2 / 3, st::defaultImportantTooltipLabel),
+-				st::defaultImportantTooltip);
+-			state->tooltip->setAttribute(Qt::WA_TransparentForMouseEvents);
+-		}
+-		state->tooltip->pointAt(QRect(help->mapTo(window, QPoint()), help->size()));
+-		state->tooltip->raise();
+-		state->tooltip->toggleAnimated(true);
+-	});
+-	base::install_event_filter(help, [=](not_null<QEvent*> event) {
+-		if (event->type() == QEvent::Enter || event->type() == QEvent::FocusIn) {
+-			state->timer.callOnce(350);
+-		} else if (event->type() == QEvent::Leave || event->type() == QEvent::FocusOut
+-				|| event->type() == QEvent::Hide || event->type() == QEvent::MouseButtonPress) {
+-			hide();
+-		}
+-		return base::EventFilterResult::Continue;
+-	});
+-	help->setClickedCallback([=] {
+-		hide();
+-		controller->show(Box([=](not_null<Ui::GenericBox*> box) {
+-			box->setTitle(rpl::single(name));
+-			box->addRow(object_ptr<Ui::FlatLabel>(box, description, st::boxLabel));
+-			box->addButton(rpl::single(Tr(u"Close"_q)), [=] { box->closeBox(); });
+-		}));
+-	});
+-	help->show();
+-	return help;
++	const auto about = Ui::CreateChild<Ui::FlatLabel>(
++		button.get(),
++		text,
++		st::settingsExperimentalAbout);
++	about->setAttribute(Qt::WA_TransparentForMouseEvents);
++	about->show();
++	button->setAccessibleDescription(text);
++	button->setProperty(
++		"mad-text-about",
++		QVariant::fromValue<QObject*>(about));
++	about->heightValue() | rpl::on_next([=](int height) {
++		button->setProperty("mad-text-about-height", height);
++	}, about->lifetime());
++	return about;
+ }
+ 
+ void AddSettingsMenuEntry(
+diff --git a/Telegram/SourceFiles/tele/tele_settings_widgets.h b/Telegram/SourceFiles/tele/tele_settings_widgets.h
+index d3d2915555ffdd651ec957cff5ac5fbd9963eb2d..3a97a6041db790ea6feb5c8381c9efda52464f50 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_widgets.h
++++ b/Telegram/SourceFiles/tele/tele_settings_widgets.h
+@@ -21,12 +21,9 @@ Ui::FlatLabel *SetupSettingText(
+ 	rpl::producer<TextWithEntities> text,
+ 	rpl::producer<QString> value,
+ 	int right);
+-Ui::AbstractButton *AddSettingHelp(
+-	not_null<Ui::RpWidget*> parent,
+-	not_null<Window::SessionController*> controller,
+-	const QString &name,
+-	const QString &description,
+-	int right);
++Ui::FlatLabel *AddSettingAbout(
++	not_null<Ui::SettingsButton*> button,
++	const QString &text);
+ void AddSettingsMenuEntry(
+ 	not_null<Ui::VerticalLayout*> menu,
+ 	not_null<Window::SessionController*> controller);
