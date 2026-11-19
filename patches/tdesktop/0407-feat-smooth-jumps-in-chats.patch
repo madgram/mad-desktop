@@ -263,7 +263,7 @@ index 478af7a0accac883d7adc81d379ac44e6c6d73c3..27c78b35c969df91fac8fd5afede2f56
  		Toggle(kOptionHideBirthdays),
  		Toggle(kOptionSilentByDefault),
 diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
-index 558a49c78f667488f1a1e4c058a1da50007ec85b..05507e0bb373ead979f4b81ea1184d3d174d12fd 100644
+index 54b2f68181eb6228ce1fd2f541f83f4a92820e4f..6f1b5b5db51112e07b7b475a50594e9f31f83141 100644
 --- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
 +++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
 @@ -2,6 +2,7 @@

@@ -1175,7 +1175,7 @@ index 13e0df2652b49198587ae1ce5f7b76c78808be3a..8951d9d2bafde9148965c6c84ac19972
  		u"menus"_s, u"privacy"_s, u"profiles"_s, u"bots"_s, u"debug"_s, u"new"_s,
  	}) {
 diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
-index 05507e0bb373ead979f4b81ea1184d3d174d12fd..6fda1ca9a280a6527dea5bd8974c1e2053d311b4 100644
+index 6f1b5b5db51112e07b7b475a50594e9f31f83141..f5f567bb810bb8e5bdc9d7617c11feb92fe571a3 100644
 --- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
 +++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
 @@ -3,6 +3,7 @@

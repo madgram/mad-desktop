@@ -11,14 +11,14 @@ Subject: [PATCH] feat: hide foreign agent labels
  .../SourceFiles/settings/settings_tele.cpp    |   4 +
  .../SourceFiles/tele/tele_foreign_agent.cpp   |  65 ++++++++++
  .../SourceFiles/tele/tele_foreign_agent.h     |   7 ++
- .../tele/tele_foreign_agent_ranges.cpp        | 119 ++++++++++++++++++
+ .../tele/tele_foreign_agent_ranges.cpp        | 113 ++++++++++++++++++
  .../tele/tele_foreign_agent_ranges.h          |  19 +++
  Telegram/SourceFiles/tele/tele_options.cpp    |  17 +++
  Telegram/SourceFiles/tele/tele_options.h      |   3 +
  .../SourceFiles/tele/tele_settings_io.cpp     |   1 +
  .../tele/tests/mad_logic_tests.cpp            |  19 +++
  Telegram/cmake/mad_tests.cmake                |   1 +
- 14 files changed, 269 insertions(+), 4 deletions(-)
+ 14 files changed, 263 insertions(+), 4 deletions(-)
  create mode 100644 Telegram/SourceFiles/tele/tele_foreign_agent.cpp
  create mode 100644 Telegram/SourceFiles/tele/tele_foreign_agent.h
  create mode 100644 Telegram/SourceFiles/tele/tele_foreign_agent_ranges.cpp
@@ -199,10 +199,10 @@ index 0000000000000000000000000000000000000000..04a887378adeabf979dfc6b9bcbbabbc
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_foreign_agent_ranges.cpp b/Telegram/SourceFiles/tele/tele_foreign_agent_ranges.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..124b9609e170c9a86dbdd9ba45d23bb42e9dd536
+index 0000000000000000000000000000000000000000..a6861d18b9de2832f35a51bacef77f54a7d44acd
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_foreign_agent_ranges.cpp
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,113 @@
 +#include "tele/tele_foreign_agent_ranges.h"
 +
 +#include <QtCore/QRegularExpression>
@@ -217,21 +217,15 @@ index 0000000000000000000000000000000000000000..124b9609e170c9a86dbdd9ba45d23bb4
 +		const auto options = QRegularExpression::CaseInsensitiveOption
 +			| QRegularExpression::MultilineOption
 +			| QRegularExpression::UseUnicodePropertiesOption;
-+		const auto patterns = {
-+			QStringLiteral("(?:НАСТОЯЩИЙ|ДАННЫЙ)\s+МАТЕРИАЛ[\s\S]{0,80}?"
-+				"ПРОИЗВЕД[ЕЁ]Н[\s\S]{0,600}?ИНОСТРАНН\w*\s+"
-+				"(?:АГЕНТ|СРЕДСТВ)\w*[^.\n]*(?:\.|$)(?:\s*18\s*\+)?"),
-+			QStringLiteral("(?:ДАННОЕ|НАСТОЯЩЕЕ)\s+СООБЩЕНИЕ[\s\S]{0,80}?"
-+				"(?:СОЗДАНО|РАСПРОСТРАНЕНО)[\s\S]{0,600}?ИНОСТРАНН\w*\s+"
-+				"(?:АГЕНТ|СРЕДСТВ)\w*[^.\n]*(?:\.|$)(?:\s*18\s*\+)?"),
-+			QStringLiteral("^[ \t]*\*+[^\n]*(?:Минюст|иноагент|"
-+				"иностранн\w*\s+агент|экстремист|террорист|нежелательн)"
-+				"[^\n]*$"),
-+			QStringLiteral("^[ \t]*18\s*\+[ \t]*$"),
++		static const char *const patterns[] = {
++			R"re((?:НАСТОЯЩИЙ|ДАННЫЙ)\s+МАТЕРИАЛ[\s\S]{0,80}?ПРОИЗВЕД[ЕЁ]Н[\s\S]{0,600}?ИНОСТРАНН\w*\s+(?:АГЕНТ|СРЕДСТВ)\w*[^.\n]*(?:\.|$)(?:\s*18\s*\+)?)re",
++			R"re((?:ДАННОЕ|НАСТОЯЩЕЕ)\s+СООБЩЕНИЕ[\s\S]{0,80}?(?:СОЗДАНО|РАСПРОСТРАНЕНО)[\s\S]{0,600}?ИНОСТРАНН\w*\s+(?:АГЕНТ|СРЕДСТВ)\w*[^.\n]*(?:\.|$)(?:\s*18\s*\+)?)re",
++			R"re(^[ \t]*\*+[^\n]*(?:Минюст|иноагент|иностранн\w*\s+агент|экстремист|террорист|нежелательн)[^\n]*$)re",
++			R"re(^[ \t]*18\s*\+[ \t]*$)re",
 +		};
 +		auto list = std::vector<QRegularExpression>();
-+		for (const auto &pattern : patterns) {
-+			list.emplace_back(pattern, options);
++		for (const auto pattern : patterns) {
++			list.emplace_back(QString::fromUtf8(pattern), options);
 +		}
 +		return list;
 +	}();
@@ -423,7 +417,7 @@ index 8564bb73a0ba7aefe32cec14327f0dc7dbe33b6b..478af7a0accac883d7adc81d379ac44e
  		Toggle(kOptionSilentByDefault),
  		Toggle(kOptionSilentPerChat),
 diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
-index 79056c697b24b28b52608f8678312d62d01d29cd..558a49c78f667488f1a1e4c058a1da50007ec85b 100644
+index 79056c697b24b28b52608f8678312d62d01d29cd..54b2f68181eb6228ce1fd2f541f83f4a92820e4f 100644
 --- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
 +++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
 @@ -1,6 +1,7 @@
@@ -443,15 +437,15 @@ index 79056c697b24b28b52608f8678312d62d01d29cd..558a49c78f667488f1a1e4c058a1da50
 +}
 +
 +void TestForeignAgent() {
-+	Require(Stripped(QStringLiteral("НАСТОЯЩИЙ МАТЕРИАЛ (ИНФОРМАЦИЯ) ПРОИЗВЕДЕН И (ИЛИ) РАСПРОСТРАНЕН ИНОСТРАННЫМ АГЕНТОМ ИВАНОВЫМ ИВАНОМ ЛИБО КАСАЕТСЯ ДЕЯТЕЛЬНОСТИ ИНОСТРАННОГО АГЕНТА ИВАНОВА ИВАНА. 18+\n\nНовости дня"))
-+		== QStringLiteral("Новости дня"), "foreign agent disclaimer");
-+	Require(Stripped(QStringLiteral("Пост про что-то\n* номер в списке Минюста 777"))
-+		== QStringLiteral("Пост про что-то"), "ministry footnote");
-+	Require(Stripped(QStringLiteral("ДАННОЕ СООБЩЕНИЕ (МАТЕРИАЛ) СОЗДАНО И (ИЛИ) РАСПРОСТРАНЕНО ИНОСТРАННЫМ СРЕДСТВОМ МАССОВОЙ ИНФОРМАЦИИ.\nжир"))
-+		== QStringLiteral("жир"), "foreign media disclaimer");
-+	Require(Stripped(QStringLiteral("Настоящий материал произведён иностранным агентом. Текст"))
-+		== QStringLiteral("Текст"), "lowercase and yo");
-+	Require(Tele::ForeignAgentRanges(QStringLiteral("обычный текст про агентов")).empty(), "plain text");
++	Require(Stripped(QString::fromUtf8("НАСТОЯЩИЙ МАТЕРИАЛ (ИНФОРМАЦИЯ) ПРОИЗВЕДЕН И (ИЛИ) РАСПРОСТРАНЕН ИНОСТРАННЫМ АГЕНТОМ ИВАНОВЫМ ИВАНОМ ЛИБО КАСАЕТСЯ ДЕЯТЕЛЬНОСТИ ИНОСТРАННОГО АГЕНТА ИВАНОВА ИВАНА. 18+\n\nНовости дня"))
++		== QString::fromUtf8("Новости дня"), "foreign agent disclaimer");
++	Require(Stripped(QString::fromUtf8("Пост про что-то\n* номер в списке Минюста 777"))
++		== QString::fromUtf8("Пост про что-то"), "ministry footnote");
++	Require(Stripped(QString::fromUtf8("ДАННОЕ СООБЩЕНИЕ (МАТЕРИАЛ) СОЗДАНО И (ИЛИ) РАСПРОСТРАНЕНО ИНОСТРАННЫМ СРЕДСТВОМ МАССОВОЙ ИНФОРМАЦИИ.\nжир"))
++		== QString::fromUtf8("жир"), "foreign media disclaimer");
++	Require(Stripped(QString::fromUtf8("Настоящий материал произведён иностранным агентом. Текст"))
++		== QString::fromUtf8("Текст"), "lowercase and yo");
++	Require(Tele::ForeignAgentRanges(QString::fromUtf8("обычный текст про агентов")).empty(), "plain text");
 +	Require(Stripped(QStringLiteral("18+")).trimmed().isEmpty(), "only the age mark");
 +}
 +

@@ -3589,7 +3589,7 @@ index 8951d9d2bafde9148965c6c84ac19972efb055bd..2e1b1b8267a8dfb6a7a6d405f69e3d93
  		u"chats"_s, u"messages"_s, u"sending"_s, u"notifications"_s,
  		u"menus"_s, u"privacy"_s, u"profiles"_s, u"bots"_s, u"debug"_s, u"new"_s,
 diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
-index 6fda1ca9a280a6527dea5bd8974c1e2053d311b4..67b46f1279469d0a7c716b8ede3fce7166ab4224 100644
+index f5f567bb810bb8e5bdc9d7617c11feb92fe571a3..6c6b6f11a6e9882fd1748e6d704632cc758e5391 100644
 --- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
 +++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
 @@ -4,6 +4,9 @@

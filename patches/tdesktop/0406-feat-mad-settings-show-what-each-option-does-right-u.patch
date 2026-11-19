@@ -148,7 +148,7 @@ index 87e462fa0fa4ec3b1eb03826b0479030ca3c86f4..d21fe018b857f6c803ed9b74ba170e78
  		const auto state = button->lifetime().make_state<
  			rpl::variable<bool>>(Logs::DebugEnabled());
 diff --git a/Telegram/SourceFiles/tele/tele_settings_widgets.cpp b/Telegram/SourceFiles/tele/tele_settings_widgets.cpp
-index 6720f8f1ff789cd7a854520e9238118b30c5e141..f40309496df498d5491ba01023188c2238fa4a1b 100644
+index 6720f8f1ff789cd7a854520e9238118b30c5e141..16eeacbd6d46fcf2ff073ff6b0082a6e92b2af6f 100644
 --- a/Telegram/SourceFiles/tele/tele_settings_widgets.cpp
 +++ b/Telegram/SourceFiles/tele/tele_settings_widgets.cpp
 @@ -2,15 +2,12 @@
@@ -190,7 +190,7 @@ index 6720f8f1ff789cd7a854520e9238118b30c5e141..f40309496df498d5491ba01023188c22
  			label->moveToLeft(left, style.padding.top() + height + st::lineWidth * 3);
  			height += label->height() + st::lineWidth * 3;
  		}
-+		const auto about = qobject_cast<Ui::FlatLabel*>(
++		const auto about = dynamic_cast<Ui::FlatLabel*>(
 +			button->property("mad-text-about").value<QObject*>());
 +		if (about) {
 +			about->resizeToWidth(width);
