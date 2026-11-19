@@ -2,7 +2,7 @@
 
 every tele patch, grouped by the release that brought it, newest first. [features](features.md) has the same rows grouped by settings page. release notes and the in-app what's new are made from these rows, so their format is strict: see [the patch row](development.md#the-patch-row).
 
-all 412 patches, newest release first.
+all 413 patches, newest release first.
 
 ### [mad dev](mad.md)
 
@@ -74,6 +74,7 @@ all 412 patches, newest release first.
 | [399](../patches/tdesktop/0399-feat-title-shows-the-account-name-and-unread-count-b.patch) | the title bar label shows the open account's name and unread count instead of the build number by default; the name, the count and the build number each have their own switch under the label, your own templates stay as they were | settings → mad → interface, on |
 | [400](../patches/tdesktop/0400-feat-reveal-spoilers-per-chat-type.patch) | automatic spoiler reveal can be set per chat type: private chats, groups and channels are on, saved messages are off | settings → mad → messages → reveal spoilers automatically |
 | [401](../patches/tdesktop/0401-feat-wav-files-play-as-music-tracks.patch) | wav files are sent as music and shown as tracks in the player, received wav files become tracks too | settings → mad → chats, on |
+| [402](../patches/tdesktop/0402-fix-telegram-links-from-a-badge-card-open-in-mad.patch) | t.me and telegram.me links from a mad badge card open in mad instead of the browser | badge card |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1009](../patches/Telegram/lib_rpl/0001-fix-topic-tabs-no-longer-crash-after-you-move-them.patch) | topic and direct message tabs no longer crash after you move them to the top, bottom or side and then scroll them. the cause was in the library that passes events around, so anything else that lost updates the same way is fixed too | always on |
 | [1010](../patches/Telegram/ThirdParty/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs/0001-fix-refuse-await-using-outside-async-functions.patch) | closes the quickjs hole that let a bot's message widget run any program on your pc: the engine gets telegram's own `await using` fix from widget-sandbox 0.6.4, which telegram desktop 7.4.2 ships without | always on |

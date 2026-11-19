@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:11:01 +0200
+Subject: [PATCH] fix: telegram links from a badge card open in mad
+
+---
+ Telegram/SourceFiles/tele/tele_mad_badge_card.cpp | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/Telegram/SourceFiles/tele/tele_mad_badge_card.cpp b/Telegram/SourceFiles/tele/tele_mad_badge_card.cpp
+index ae6ef061f34291dc717b20f2dd0a15e11f705c93..eb4642f2c72090174b320d7e9003e7cbebb2a515 100644
+--- a/Telegram/SourceFiles/tele/tele_mad_badge_card.cpp
++++ b/Telegram/SourceFiles/tele/tele_mad_badge_card.cpp
+@@ -1,6 +1,7 @@
+ #include "tele/tele_mad_badge_card.h"
+ 
+ #include "core/application.h"
++#include "core/click_handler_types.h"
+ #include "data/data_session.h"
+ #include "data/stickers/data_custom_emoji.h"
+ #include "main/main_session.h"
+@@ -14,6 +15,7 @@
+ #include "ui/ui_utility.h"
+ #include "ui/widgets/buttons.h"
+ #include "window/window_controller.h"
++#include "window/window_session_controller.h"
+ #include "styles/style_basic.h"
+ #include "styles/style_layers.h"
+ #include "styles/style_settings.h"
+@@ -21,7 +23,6 @@
+ 
+ #include <QtCore/QPointer>
+ #include <QtCore/QUrl>
+-#include <QtGui/QDesktopServices>
+ #include <QtGui/QKeyEvent>
+ #include <QtGui/QMouseEvent>
+ #include <QtGui/QPainter>
+@@ -189,8 +190,12 @@ Card::Card(
+ 			st::defaultActiveButton);
+ 		_open->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
+ 		_open->setClickedCallback([=] {
+-			QDesktopServices::openUrl(url);
++			const auto link = url.toString();
++			const auto controller = _window->sessionController();
+ 			hideAnimated();
++			UrlClickHandler::Open(link, QVariant::fromValue(ClickHandlerContext{
++				.sessionWindow = base::make_weak(controller),
++			}));
+ 		});
+ 	}
+ 	showButtons(false);
