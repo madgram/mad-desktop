@@ -242,6 +242,7 @@ jobs:
           "$CCACHE_EXE" -z
 
       - name: build and run tests
+        id: tests
         env:
           TDESKTOP_API_ID: ${{ secrets.TDESKTOP_API_ID }}
           TDESKTOP_API_HASH: ${{ secrets.TDESKTOP_API_HASH }}
@@ -252,6 +253,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: build mad
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: |
           foreach ($jobs in @($env:NUMBER_OF_PROCESSORS, 2, 1)) {
             python mad/build-mad.py --config Release --qt-prefix Libraries/win64/Qt-6.11.2 --build-number $env:MAD_BUILD --launcher $env:CCACHE_EXE --jobs $jobs
@@ -460,6 +462,7 @@ jobs:
             -D CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
             -D DESKTOP_APP_DISABLE_AUTOUPDATE=ON \
             -D TDESKTOP_API_ID="$API_ID" -D TDESKTOP_API_HASH="$API_HASH" -D TELE_BUILD="$MAD_BUILD"
+          defaults write com.apple.dt.Xcode IDEBuildingContinueBuildingAfterErrors -bool YES
           cmake --build ../out --config Release --parallel --target Telegram -- -quiet
 
       - name: pack

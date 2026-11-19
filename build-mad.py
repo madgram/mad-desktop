@@ -86,7 +86,9 @@ def main():
         return result.returncode
     targets = ["mad_registry_tests", "mad_history_crypto_tests", "mad_links_tests", "mad_logic_tests"] if args.tests else ["Telegram"]
     command = [cmake, "--build", build, "--config", args.config, "--target", *targets, "--parallel", args.jobs]
-    if not args.launcher:
+    if args.launcher:
+        command += ["--", "-k", "0"]
+    else:
         command += ["--", f"/p:CL_MPCount={args.jobs}"]
     result = run(command)
     if result.returncode == 0 and args.launcher and not args.tests:
