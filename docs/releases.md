@@ -2,7 +2,7 @@
 
 every tele patch, grouped by the release that brought it, newest first. [features](features.md) has the same rows grouped by settings page. release notes and the in-app what's new are made from these rows, so their format is strict: see [the patch row](development.md#the-patch-row).
 
-all 409 patches, newest release first.
+all 410 patches, newest release first.
 
 ### [mad dev](mad.md)
 
@@ -71,6 +71,7 @@ all 409 patches, newest release first.
 | [396](../patches/tdesktop/0396-fix-hidden-messages-leave-no-gaps-stray-dates-or-unr.patch) | hidden messages leave no gaps, stray dates or unread bars: comments and chats link bubbles across hidden messages, the next shown message gets its date, and the unread bar lands on the first shown unread message | with 16 |
 | [397](../patches/tdesktop/0397-fix-one-start-menu-shortcut-that-opens-the-single-fi.patch) | the start menu shortcut opens the same profile as the single-file mad.exe, keeps the same taskbar identity across updates, and settings point out a leftover shortcut from an old installer | windows |
 | [398](../patches/tdesktop/0398-feat-new-mad-logo-everywhere.patch) | the new mad logo for the app, installer, taskbar, tray and macOS dock, where it now sits on the standard icon grid instead of a full square; the red and white presets are gone, the telegram preset and your own image stay | settings → mad → interface |
+| [399](../patches/tdesktop/0399-feat-title-shows-the-account-name-and-unread-count-b.patch) | the title bar label shows the open account's name and unread count instead of the build number by default; the name, the count and the build number each have their own switch under the label, your own templates stay as they were | settings → mad → interface, on |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1009](../patches/Telegram/lib_rpl/0001-fix-topic-tabs-no-longer-crash-after-you-move-them.patch) | topic and direct message tabs no longer crash after you move them to the top, bottom or side and then scroll them. the cause was in the library that passes events around, so anything else that lost updates the same way is fixed too | always on |
 | [1010](../patches/Telegram/ThirdParty/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs/0001-fix-refuse-await-using-outside-async-functions.patch) | closes the quickjs hole that let a bot's message widget run any program on your pc: the engine gets telegram's own `await using` fix from widget-sandbox 0.6.4, which telegram desktop 7.4.2 ships without | always on |

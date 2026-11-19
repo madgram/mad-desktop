@@ -1,0 +1,271 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:05:15 +0200
+Subject: [PATCH] feat: title shows the account name and unread count by
+ default
+
+---
+ Telegram/Resources/langs/mad_ru.json          | 10 +++-
+ .../SourceFiles/settings/settings_tele.cpp    | 18 +++++++
+ Telegram/SourceFiles/tele/tele_options.cpp    | 47 ++++++++++++++++++-
+ Telegram/SourceFiles/tele/tele_options.h      |  7 +++
+ .../SourceFiles/tele/tele_settings_io.cpp     |  3 ++
+ Telegram/SourceFiles/tele/tele_title.cpp      | 29 +++++++++++-
+ Telegram/SourceFiles/tele/tele_title_box.cpp  |  4 +-
+ .../SourceFiles/tele/tele_title_template.cpp  |  1 +
+ 8 files changed, 113 insertions(+), 6 deletions(-)
+
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 99529ff6a799427d83c787250b25541593be1204..ec013da718878fd3619a132c7026f7febb76d4f1 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -125,7 +125,6 @@
+   "A direct link to a .ts or .js file. It goes into the scripts folder and stays off until you turn it on. tele checks the link for new versions.": "Прямая ссылка на файл .ts или .js. Скрипт сохраняется в папку скриптов и остаётся выключенным, пока ты его не включишь. mad проверяет эту ссылку на обновления.",
+   "A direct link to the newest version of this .ts or .js file. tele checks it when you open the Scripts manager and every 6 hours, and offers an update when its version is newer. Leave it empty to stop checking.": "Прямая ссылка на актуальный файл .ts или .js. mad проверяет её при открытии менеджера скриптов и каждые 6 часов. Если версия новее, предлагает обновление. Пустое поле отключает проверку.",
+   "A list of mad toasts, rate limits and server notices, opened from the main menu.": "Список уведомлений mad, ограничений частоты запросов и сообщений сервера. Открывается из главного меню.",
+-  "A live template, empty hides the label.": "Шаблон обновляется автоматически. Пустой шаблон скрывает подпись.",
+   "A message that is exactly /name sends that quick reply.": "Сообщение, состоящее только из /name, отправляет соответствующий быстрый ответ.",
+   "A regular gift: backdrops and symbols come from %1. ": "Обычный подарок: фоны и символы берутся из %1. ",
+   "A regular gift: backdrops and symbols come from every collection. ": "Обычный подарок: фоны и символы из каждой коллекции. ",
+@@ -2139,5 +2138,12 @@
+   "Snippets": "Сниппеты",
+   "Shortcut = text": "Сокращение = текст",
+   "One per line, like ;addr = Red Square 1. Type the shortcut and a space to get the text, write %1 for a new line.": "По одному в строке, например ;адрес = Красная площадь, 1. Напиши сокращение и пробел, и оно заменится текстом. Перенос строки: %1.",
+-  "Line %1 needs to look like shortcut = text.": "Строка %1 должна выглядеть так: сокращение = текст."
++  "Line %1 needs to look like shortcut = text.": "Строка %1 должна выглядеть так: сокращение = текст.",
++  "A live template, empty hides the label. {auto} shows what is turned on below.": "Шаблон обновляется сам. Пустой шаблон скрывает подпись, {auto} показывает то, что включено ниже.",
++  "Account name in the title": "Имя аккаунта в заголовке",
++  "The name of the open account.": "Имя открытого сейчас аккаунта.",
++  "Unread count in the title": "Непрочитанные в заголовке",
++  "The number of unread chats, as in the taskbar badge.": "Сколько непрочитанных, как на значке в панели задач.",
++  "Build number in the title": "Номер сборки в заголовке",
++  "Shows which mad build is running.": "Показывает, какая сборка mad запущена."
+ }
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index 72c987c0a4de06729b51df02cf8ea018a1232d02..a4cd85ea6f91e0e323d8ce5fc8cec9f9857bb998 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -1314,6 +1314,24 @@ void AddTitle(SectionBuilder &builder) {
+ 		SetupLink(button, option.id());
+ 	}
+ 	AddAbout(builder, option.id(), description);
++	for (const auto id : {
++		::Tele::kOptionTitleName,
++		::Tele::kOptionTitleUnread,
++		::Tele::kOptionTitleBuild,
++	}) {
++		AddOptionToggle(
++			builder,
++			id,
++			{ u"title"_q },
++			{ Requirement(
++				::Tele::kOptionTitleTemplate,
++				[](not_null<::Main::Session*>) {
++					return ::Tele::TitleTemplateValue(
++					) | rpl::map([](const QString &text) {
++						return text.contains(u"{auto"_q);
++					});
++				}) });
++	}
+ 	const auto &windowOption = base::options::lookup<QString>(
+ 		::Tele::kOptionWindowTitleTemplate);
+ 	const auto windowDescription = ::Tele::Tr(windowOption.description());
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index 5c7ee3b6d291c6b0ede167f93f9482e568c685f2..ebdf1207234177d4d744236c30933d360c3f7523 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -176,6 +176,9 @@ const char kOptionNoticesServer[] = "tele-notices-server";
+ const char kOptionTitleTemplate[] = "tele-title";
+ const char kOptionWindowTitleTemplate[] = "tele-window-title";
+ const char kOptionTitleBuildHash[] = "tele-title-build-hash";
++const char kOptionTitleName[] = "tele-title-name";
++const char kOptionTitleUnread[] = "tele-title-unread";
++const char kOptionTitleBuild[] = "tele-title-build";
+ const char kOptionMenuLayouts[] = "tele-menu-layouts";
+ const char kOptionMessageMenuLegacy[] = "tele-message-menu";
+ const char kOptionSentToBottom[] = "tele-sent-to-bottom";
+@@ -1304,8 +1307,29 @@ base::options::toggle NoticesServerOption({
+ base::options::option<QString> TitleTemplateOption({
+ 	.id = kOptionTitleTemplate,
+ 	.name = "Title bar label",
+-	.description = "A live template, empty hides the label.",
+-	.defaultValue = u"mad #{build}"_q,
++	.description = "A live template, empty hides the label. {auto} "
++		"shows what is turned on below.",
++	.defaultValue = u"{auto}"_q,
++});
++
++base::options::toggle TitleNameOption({
++	.id = kOptionTitleName,
++	.name = "Account name in the title",
++	.description = "The name of the open account.",
++	.defaultValue = true,
++});
++
++base::options::toggle TitleUnreadOption({
++	.id = kOptionTitleUnread,
++	.name = "Unread count in the title",
++	.description = "The number of unread chats, as in the taskbar badge.",
++	.defaultValue = true,
++});
++
++base::options::toggle TitleBuildOption({
++	.id = kOptionTitleBuild,
++	.name = "Build number in the title",
++	.description = "Shows which mad build is running.",
+ });
+ 
+ base::options::option<QString> WindowTitleTemplateOption({
+@@ -3374,6 +3398,25 @@ rpl::producer<QString> WindowTitleTemplateValue() {
+ 	});
+ }
+ 
++bool TitleName() {
++	return TitleNameOption.value();
++}
++
++bool TitleUnread() {
++	return TitleUnreadOption.value();
++}
++
++bool TitleBuild() {
++	return TitleBuildOption.value();
++}
++
++rpl::producer<> TitleAutoChanges() {
++	return rpl::merge(
++		TitleNameOption.changes(),
++		TitleUnreadOption.changes(),
++		TitleBuildOption.changes());
++}
++
+ QString MenuLayouts() {
+ 	return MenuLayoutsOption.value();
+ }
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index 01c6cf263452a293ad93c4deb5a606c7642c5511..1248b7af0eeb3a439659039701b780d9546d7349 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -171,6 +171,9 @@ extern const char kOptionNoticesServer[];
+ extern const char kOptionTitleTemplate[];
+ extern const char kOptionWindowTitleTemplate[];
+ extern const char kOptionTitleBuildHash[];
++extern const char kOptionTitleName[];
++extern const char kOptionTitleUnread[];
++extern const char kOptionTitleBuild[];
+ extern const char kOptionMenuLayouts[];
+ extern const char kOptionMessageMenuLegacy[];
+ extern const char kOptionSentToBottom[];
+@@ -539,6 +542,10 @@ void SetTitleTemplate(const QString &value);
+ [[nodiscard]] QString WindowTitleTemplate();
+ void SetWindowTitleTemplate(const QString &value);
+ [[nodiscard]] rpl::producer<QString> WindowTitleTemplateValue();
++[[nodiscard]] bool TitleName();
++[[nodiscard]] bool TitleUnread();
++[[nodiscard]] bool TitleBuild();
++[[nodiscard]] rpl::producer<> TitleAutoChanges();
+ [[nodiscard]] QString MenuLayouts();
+ void SetMenuLayouts(const QString &value);
+ [[nodiscard]] rpl::producer<> MenuLayoutsChanges();
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index c49f7b4bcc92091d05d8027bbb30c2db033cf08c..a4321097a08b702259c8f937d5406d0e59c67993 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -269,6 +269,9 @@ struct Spec {
+ 		Toggle(kOptionShot),
+ 		Toggle(kOptionServerUsernames),
+ 		Toggle(kOptionNoticesServer),
++		Toggle(kOptionTitleName),
++		Toggle(kOptionTitleUnread),
++		Toggle(kOptionTitleBuild),
+ 		Toggle(kOptionSentToBottom),
+ 		Toggle(kOptionNoTextSendingAnimation),
+ 		Toggle(kOptionForwardOneByOne),
+diff --git a/Telegram/SourceFiles/tele/tele_title.cpp b/Telegram/SourceFiles/tele/tele_title.cpp
+index 48189a1e6bf0540a861609883981dc62ef84e139..ac86974a5e49662948583a86c1e4beba7b195047 100644
+--- a/Telegram/SourceFiles/tele/tele_title.cpp
++++ b/Telegram/SourceFiles/tele/tele_title.cpp
+@@ -81,6 +81,29 @@ struct Context {
+ 	return brief ? Compact(text) : text;
+ }
+ 
++[[nodiscard]] QString AutoTitle(const Context &context) {
++	const auto controller = context.controller;
++	auto parts = QStringList();
++	if (TitleBuild()) {
++		parts.push_back(TitleLabel());
++	}
++	auto account = QString();
++	if (controller && TitleName() && !StreamerMode()) {
++		account = controller->session().user()->name();
++	}
++	const auto unread = (controller && TitleUnread())
++		? Core::App().unreadBadge()
++		: 0;
++	if (unread > 0) {
++		const auto counter = u"(%1)"_q.arg(unread);
++		account = account.isEmpty() ? counter : (account + ' ' + counter);
++	}
++	if (!account.isEmpty()) {
++		parts.push_back(account);
++	}
++	return parts.isEmpty() ? u"mad"_q : parts.join(u" \u00B7 "_q);
++}
++
+ [[nodiscard]] std::optional<QString> Value(
+ 		const Token &token,
+ 		const Context &context) {
+@@ -149,6 +172,8 @@ struct Context {
+ 		return (controller && Connecting(&controller->session()))
+ 			? (brief ? QString(QChar(0x2026)) : u"connecting"_q)
+ 			: QString();
++	} else if (name == u"auto"_q) {
++		return AutoTitle(context);
+ 	} else if (name == u"label"_q && context.label) {
+ 		auto inner = context;
+ 		inner.label = nullptr;
+@@ -220,7 +245,9 @@ std::optional<QString> RenderIn(
+ 		rpl::merge(
+ 			Core::App().unreadBadgeChanges(),
+ 			Core::App().domain().accountsChanges(),
+-			Core::App().passcodeLockChanges() | rpl::to_empty
++			Core::App().passcodeLockChanges() | rpl::to_empty,
++			TitleAutoChanges(),
++			StreamerModeValue() | rpl::skip(1) | rpl::to_empty
+ 		) | rpl::on_next(push, lifetime);
+ 		window->sessionControllerValue(
+ 		) | rpl::on_next([=](Window::SessionController *controller) {
+diff --git a/Telegram/SourceFiles/tele/tele_title_box.cpp b/Telegram/SourceFiles/tele/tele_title_box.cpp
+index a6352ce71f1fbab37f6b76182d6a8b35cf13c178..b8812ad05e8161742a9b7fa082a4d42b84678b89 100644
+--- a/Telegram/SourceFiles/tele/tele_title_box.cpp
++++ b/Telegram/SourceFiles/tele/tele_title_box.cpp
+@@ -69,6 +69,7 @@ struct Group {
+ 			} },
+ 		} },
+ 		{ u"Account"_q, {
++			{ u"auto"_q, { QString() } },
+ 			{ u"name"_q, { QString(), u"|short"_q, u"|upper"_q } },
+ 			{ u"username"_q, { QString(), u"|upper"_q } },
+ 			{ u"id"_q, { QString() } },
+@@ -108,7 +109,8 @@ struct Group {
+ 		}
+ 		: std::vector<QString>{
+ 			QString(),
+-			u"tele #{build}"_q,
++			u"{auto}"_q,
++			u"mad #{build}"_q,
+ 			u"{time:HH:mm} \u00B7 {weekday|short}"_q,
+ 			u"{name}[ \u00B7 {unread} unread]"_q,
+ 			u"{weekday|short|lower} {day} {month|short|lower} \u00B7 {time}"_q,
+diff --git a/Telegram/SourceFiles/tele/tele_title_template.cpp b/Telegram/SourceFiles/tele/tele_title_template.cpp
+index 4a0c4fe764c6dcdcdc86dc4803ff254f5e93db14..36d2465941f54eb99664c9dcdc880d920783b7f7 100644
+--- a/Telegram/SourceFiles/tele/tele_title_template.cpp
++++ b/Telegram/SourceFiles/tele/tele_title_template.cpp
+@@ -34,6 +34,7 @@ struct ModifierResult {
+ 		u"chat_unread"_q,
+ 		u"status"_q,
+ 		u"label"_q,
++		u"auto"_q,
+ 	};
+ 	return list.contains(name);
+ }
