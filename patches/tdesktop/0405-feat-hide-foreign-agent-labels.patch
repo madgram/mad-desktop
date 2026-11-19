@@ -1,0 +1,478 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:17:18 +0200
+Subject: [PATCH] feat: hide foreign agent labels
+
+---
+ Telegram/CMakeLists.txt                       |   4 +
+ Telegram/Resources/langs/mad_ru.json          |   4 +-
+ .../dialogs/ui/dialogs_message_view.cpp       |   2 +
+ .../history/view/history_view_element.cpp     |   8 +-
+ .../SourceFiles/settings/settings_tele.cpp    |   4 +
+ .../SourceFiles/tele/tele_foreign_agent.cpp   |  65 ++++++++++
+ .../SourceFiles/tele/tele_foreign_agent.h     |   7 ++
+ .../tele/tele_foreign_agent_ranges.cpp        | 119 ++++++++++++++++++
+ .../tele/tele_foreign_agent_ranges.h          |  19 +++
+ Telegram/SourceFiles/tele/tele_options.cpp    |  17 +++
+ Telegram/SourceFiles/tele/tele_options.h      |   3 +
+ .../SourceFiles/tele/tele_settings_io.cpp     |   1 +
+ .../tele/tests/mad_logic_tests.cpp            |  19 +++
+ Telegram/cmake/mad_tests.cmake                |   1 +
+ 14 files changed, 269 insertions(+), 4 deletions(-)
+ create mode 100644 Telegram/SourceFiles/tele/tele_foreign_agent.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_foreign_agent.h
+ create mode 100644 Telegram/SourceFiles/tele/tele_foreign_agent_ranges.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_foreign_agent_ranges.h
+
+diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
+index d71e88ac9d28f35fcd649cba3e93f8dc9dc462bf..9ca7aebe562f104482a27601114e2eaeabe9a9b2 100644
+--- a/Telegram/CMakeLists.txt
++++ b/Telegram/CMakeLists.txt
+@@ -2666,6 +2666,10 @@ PRIVATE
+     tele/tele_wav_music.h
+     tele/tele_pinned_bar_rules.cpp
+     tele/tele_pinned_bar_rules.h
++    tele/tele_foreign_agent.cpp
++    tele/tele_foreign_agent.h
++    tele/tele_foreign_agent_ranges.cpp
++    tele/tele_foreign_agent_ranges.h
+     tele/tele_mad_names.cpp
+     tele/tele_mad_names.h
+     tele/tele_snippets.cpp
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 94a4f08cca08bf56f53e89ab5d1f53cfb9ce08e4..873ac51ad48fbcd0d55dd52532c156c9a708a7d8 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2155,5 +2155,7 @@
+   "From a chat's menu, for that chat only.": "Из меню чата, только для этого чата.",
+   "Hide the pinned bar in all chats": "Скрыть панель закрепа во всех чатах",
+   "Pinned messages stay in the chat menu. Single chats can still show the bar from their menu.": "Закреплённые сообщения остаются в меню чата. В отдельных чатах панель можно вернуть через их меню.",
+-  "Pinned bar in chats": "Панель закрепа в чатах"
++  "Pinned bar in chats": "Панель закрепа в чатах",
++  "Hide foreign agent labels": "Скрывать плашки иноагентов",
++  "Removes the foreign agent disclaimers, Ministry of Justice footnotes and 18+ marks from messages and chat previews. Copying and forwarding keep the original text.": "Убирает «НАСТОЯЩИЙ МАТЕРИАЛ… ИНОСТРАННЫМ АГЕНТОМ», сноски про Минюст и «18+» из сообщений и превью в списке чатов. При копировании и пересылке текст остаётся как был."
+ }
+diff --git a/Telegram/SourceFiles/dialogs/ui/dialogs_message_view.cpp b/Telegram/SourceFiles/dialogs/ui/dialogs_message_view.cpp
+index 8d80b8708ff5ba6a7150c6be1b0c9a7d39ef4bf0..b28e2d8d70ff122fa79efa83a52e26c629956e47 100644
+--- a/Telegram/SourceFiles/dialogs/ui/dialogs_message_view.cpp
++++ b/Telegram/SourceFiles/dialogs/ui/dialogs_message_view.cpp
+@@ -27,6 +27,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "lang/lang_keys.h"
+ #include "lang/lang_text_entity.h"
+ #include "tele/tele_options.h"
++#include "tele/tele_foreign_agent.h"
+ #include "tele/tele_spoilers.h"
+ #include "styles/style_dialogs.h"
+ 
+@@ -215,6 +216,7 @@ void MessageView::prepare(
+ 	} else {
+ 		_senderCache = { st::dialogsTextWidthMin };
+ 	}
++	preview.text = ::Tele::WithoutForeignAgentLabel(std::move(preview.text));
+ 	TextUtilities::Trim(preview.text);
+ 	auto textToCache = DialogsPreviewText(std::move(preview.text));
+ 
+diff --git a/Telegram/SourceFiles/history/view/history_view_element.cpp b/Telegram/SourceFiles/history/view/history_view_element.cpp
+index aec6dd3d57f327108f71075a02e6e0f9d81feca7..400a7f482609242ff09a8f345f85fd08b28e27a2 100644
+--- a/Telegram/SourceFiles/history/view/history_view_element.cpp
++++ b/Telegram/SourceFiles/history/view/history_view_element.cpp
+@@ -77,6 +77,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "tele/scripting/tele_script_messages.h"
+ #include "tele/tele_code_lines.h"
+ #include "tele/tele_communities.h"
++#include "tele/tele_foreign_agent.h"
+ #include "tele/tele_html_card.h"
+ #include "tele/tele_ignored.h"
+ #include "tele/tele_invisible.h"
+@@ -2324,9 +2325,10 @@ void Element::validateText() {
+ 		if (!unavailable.isEmpty()) {
+ 			setTextWithLinks(tr::italic(unavailable));
+ 		} else {
+-			setTextWithLinks(Tele::Scripting::DecoratedText(
+-				_textItem,
+-				_textItem->translatedTextWithLocalEntities()));
++			setTextWithLinks(Tele::WithoutForeignAgentLabel(
++				Tele::Scripting::DecoratedText(
++					_textItem,
++					_textItem->translatedTextWithLocalEntities())));
+ 			richPage = _textItem->translatedRichPage();
+ 		}
+ 	}
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index d30ba7bf03817ae1e3821f66a08d9b3f90a83ac6..87e462fa0fa4ec3b1eb03826b0479030ca3c86f4 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -2949,6 +2949,10 @@ void FillChats(SectionBuilder &builder) {
+ 		builder,
+ 		::Tele::kOptionHideBirthdays,
+ 		{ u"birthday"_q, u"confetti"_q, u"cake"_q, u"gift"_q });
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionHideForeignAgent,
++		{ u"foreign agent"_q, u"disclaimer"_q, u"18+"_q, u"иноагент"_q });
+ 	AddGroupDivider(builder);
+ 	AddGroupTitle(builder, u"Panels"_q);
+ 	AddOptionToggle(
+diff --git a/Telegram/SourceFiles/tele/tele_foreign_agent.cpp b/Telegram/SourceFiles/tele/tele_foreign_agent.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..0a9cdfe114c5c9cdab0a42c83cd39593a7cb574d
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_foreign_agent.cpp
+@@ -0,0 +1,65 @@
++#include "tele/tele_foreign_agent.h"
++
++#include "data/data_session.h"
++#include "history/history.h"
++#include "history/history_item.h"
++#include "history/view/history_view_element.h"
++#include "tele/tele_foreign_agent_ranges.h"
++#include "tele/tele_ignored.h"
++#include "tele/tele_options.h"
++#include "tele/tele_spoilers.h"
++#include "ui/text/text_utilities.h"
++
++namespace Tele {
++namespace {
++
++struct State {
++	State();
++
++	rpl::lifetime lifetime;
++};
++
++State::State() {
++	HideForeignAgentChanges() | rpl::on_next([] {
++		auto items = base::flat_set<not_null<HistoryItem*>>();
++		EnumerateViews([&](not_null<HistoryView::Element*> view) {
++			items.emplace(view->data());
++		});
++		for (const auto item : items) {
++			item->history()->owner().requestItemTextRefresh(item);
++		}
++		InvalidateAllPreviews();
++	}, lifetime);
++}
++
++void EnsureState() {
++	static State state;
++}
++
++} // namespace
++
++TextWithEntities WithoutForeignAgentLabel(TextWithEntities text) {
++	EnsureState();
++	if (!HideForeignAgent()) {
++		return text;
++	}
++	const auto ranges = ForeignAgentRanges(text.text);
++	if (ranges.empty()
++		|| WithoutRanges(text.text, ranges).trimmed().isEmpty()) {
++		return text;
++	}
++	auto result = TextWithEntities();
++	auto from = 0;
++	for (const auto &range : ranges) {
++		if (range.from > from) {
++			result.append(Ui::Text::Mid(text, from, range.from - from));
++		}
++		from = range.till;
++	}
++	if (from < text.text.size()) {
++		result.append(Ui::Text::Mid(text, from));
++	}
++	return result;
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_foreign_agent.h b/Telegram/SourceFiles/tele/tele_foreign_agent.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..04a887378adeabf979dfc6b9bcbbabbccfd44507
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_foreign_agent.h
+@@ -0,0 +1,7 @@
++#pragma once
++
++namespace Tele {
++
++[[nodiscard]] TextWithEntities WithoutForeignAgentLabel(TextWithEntities text);
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_foreign_agent_ranges.cpp b/Telegram/SourceFiles/tele/tele_foreign_agent_ranges.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..124b9609e170c9a86dbdd9ba45d23bb42e9dd536
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_foreign_agent_ranges.cpp
+@@ -0,0 +1,119 @@
++#include "tele/tele_foreign_agent_ranges.h"
++
++#include <QtCore/QRegularExpression>
++
++#include <algorithm>
++
++namespace Tele {
++namespace {
++
++[[nodiscard]] const std::vector<QRegularExpression> &Expressions() {
++	static const auto result = [] {
++		const auto options = QRegularExpression::CaseInsensitiveOption
++			| QRegularExpression::MultilineOption
++			| QRegularExpression::UseUnicodePropertiesOption;
++		const auto patterns = {
++			QStringLiteral("(?:НАСТОЯЩИЙ|ДАННЫЙ)\s+МАТЕРИАЛ[\s\S]{0,80}?"
++				"ПРОИЗВЕД[ЕЁ]Н[\s\S]{0,600}?ИНОСТРАНН\w*\s+"
++				"(?:АГЕНТ|СРЕДСТВ)\w*[^.\n]*(?:\.|$)(?:\s*18\s*\+)?"),
++			QStringLiteral("(?:ДАННОЕ|НАСТОЯЩЕЕ)\s+СООБЩЕНИЕ[\s\S]{0,80}?"
++				"(?:СОЗДАНО|РАСПРОСТРАНЕНО)[\s\S]{0,600}?ИНОСТРАНН\w*\s+"
++				"(?:АГЕНТ|СРЕДСТВ)\w*[^.\n]*(?:\.|$)(?:\s*18\s*\+)?"),
++			QStringLiteral("^[ \t]*\*+[^\n]*(?:Минюст|иноагент|"
++				"иностранн\w*\s+агент|экстремист|террорист|нежелательн)"
++				"[^\n]*$"),
++			QStringLiteral("^[ \t]*18\s*\+[ \t]*$"),
++		};
++		auto list = std::vector<QRegularExpression>();
++		for (const auto &pattern : patterns) {
++			list.emplace_back(pattern, options);
++		}
++		return list;
++	}();
++	return result;
++}
++
++[[nodiscard]] bool IsSpace(QChar ch) {
++	const auto code = ch.unicode();
++	return (code == 0x20)
++		|| (code == 0x0a)
++		|| (code == 0x09)
++		|| (code == 0x0d)
++		|| (code == 0xa0);
++}
++
++[[nodiscard]] bool MayContain(const QString &text) {
++	return text.contains(QStringLiteral("18"))
++		|| text.contains(QChar('*'))
++		|| text.contains(QStringLiteral("агент"), Qt::CaseInsensitive)
++		|| text.contains(QStringLiteral("средств"), Qt::CaseInsensitive);
++}
++
++[[nodiscard]] std::vector<TextRange> Merged(std::vector<TextRange> list) {
++	std::sort(begin(list), end(list), [](TextRange a, TextRange b) {
++		return a.from < b.from;
++	});
++	auto result = std::vector<TextRange>();
++	for (const auto &range : list) {
++		if (!result.empty() && range.from <= result.back().till) {
++			result.back().till = std::max(result.back().till, range.till);
++		} else {
++			result.push_back(range);
++		}
++	}
++	return result;
++}
++
++} // namespace
++
++std::vector<TextRange> ForeignAgentRanges(const QString &text) {
++	if (!MayContain(text)) {
++		return {};
++	}
++	auto found = std::vector<TextRange>();
++	for (const auto &expression : Expressions()) {
++		auto i = expression.globalMatch(text);
++		while (i.hasNext()) {
++			const auto match = i.next();
++			if (match.capturedLength() > 0) {
++				found.push_back({
++					int(match.capturedStart()),
++					int(match.capturedEnd()),
++				});
++			}
++		}
++	}
++	if (found.empty()) {
++		return {};
++	}
++	const auto size = int(text.size());
++	auto expanded = std::vector<TextRange>();
++	for (auto range : Merged(std::move(found))) {
++		while (range.till < size && IsSpace(text[range.till])) {
++			++range.till;
++		}
++		if (range.till == size) {
++			while (range.from > 0 && IsSpace(text[range.from - 1])) {
++				--range.from;
++			}
++		}
++		expanded.push_back(range);
++	}
++	return Merged(std::move(expanded));
++}
++
++QString WithoutRanges(
++		const QString &text,
++		const std::vector<TextRange> &ranges) {
++	auto result = QString();
++	result.reserve(text.size());
++	auto from = 0;
++	for (const auto &range : ranges) {
++		result.append(text.mid(from, range.from - from));
++		from = range.till;
++	}
++	result.append(text.mid(from));
++	return result;
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_foreign_agent_ranges.h b/Telegram/SourceFiles/tele/tele_foreign_agent_ranges.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..5a8f2d90c4963b7396d86f9dc08f4704732eddb2
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_foreign_agent_ranges.h
+@@ -0,0 +1,19 @@
++#pragma once
++
++#include <QtCore/QString>
++
++#include <vector>
++
++namespace Tele {
++
++struct TextRange {
++	int from = 0;
++	int till = 0;
++};
++
++[[nodiscard]] std::vector<TextRange> ForeignAgentRanges(const QString &text);
++[[nodiscard]] QString WithoutRanges(
++	const QString &text,
++	const std::vector<TextRange> &ranges);
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index e4c490ccba708e6c99249a7dbcb8437ff6bf7da5..38da570933cd32cff83d1ac1f2f9c22e215bfefd 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -206,6 +206,7 @@ const char kOptionIndentSelectedLines[] = "tele-indent-selected-lines";
+ const char kOptionComposerIndentation[] = "tele-composer-indentation";
+ const char kOptionHideGiftButton[] = "tele-hide-gift-button";
+ const char kOptionHideRecordButton[] = "tele-hide-record-button";
++const char kOptionHideForeignAgent[] = "tele-hide-foreign-agent";
+ const char kOptionHideBirthdays[] = "tele-hide-birthdays";
+ const char kOptionSilentByDefault[] = "tele-silent-by-default";
+ const char kOptionSilentPerChat[] = "tele-silent-per-chat";
+@@ -1501,6 +1502,14 @@ base::options::toggle HideGiftButtonOption({
+ 	.name = "Hide the gift button in the message field",
+ });
+ 
++base::options::toggle HideForeignAgentOption({
++	.id = kOptionHideForeignAgent,
++	.name = "Hide foreign agent labels",
++	.description = "Removes the foreign agent disclaimers, Ministry of "
++		"Justice footnotes and 18+ marks from messages and chat previews. "
++		"Copying and forwarding keep the original text.",
++});
++
+ base::options::toggle HideRecordButtonOption({
+ 	.id = kOptionHideRecordButton,
+ 	.name = "Hide the voice message button",
+@@ -3638,6 +3647,14 @@ rpl::producer<> HideGiftButtonChanges() {
+ 	return HideGiftButtonOption.changes();
+ }
+ 
++bool HideForeignAgent() {
++	return HideForeignAgentOption.value();
++}
++
++rpl::producer<> HideForeignAgentChanges() {
++	return HideForeignAgentOption.changes();
++}
++
+ bool HideRecordButton() {
+ 	return HideRecordButtonOption.value();
+ }
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index 1ef7c9055e6cfce12c031d3b0edbf23ddda9c7a1..26e6cdf670e27d956f31f3a4551b3210de38e852 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -201,6 +201,7 @@ extern const char kOptionIndentSelectedLines[];
+ extern const char kOptionComposerIndentation[];
+ extern const char kOptionHideGiftButton[];
+ extern const char kOptionHideRecordButton[];
++extern const char kOptionHideForeignAgent[];
+ extern const char kOptionHideBirthdays[];
+ extern const char kOptionSilentByDefault[];
+ extern const char kOptionSilentPerChat[];
+@@ -592,6 +593,8 @@ void SetComposerIndentation(const QString &value);
+ [[nodiscard]] rpl::producer<> HideGiftButtonChanges();
+ [[nodiscard]] bool HideRecordButton();
+ [[nodiscard]] rpl::producer<> HideRecordButtonChanges();
++[[nodiscard]] bool HideForeignAgent();
++[[nodiscard]] rpl::producer<> HideForeignAgentChanges();
+ [[nodiscard]] bool HideBirthdays();
+ [[nodiscard]] rpl::producer<> HideBirthdaysChanges();
+ [[nodiscard]] bool SilentByDefault();
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index 8564bb73a0ba7aefe32cec14327f0dc7dbe33b6b..478af7a0accac883d7adc81d379ac44e6c6d73c3 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -293,6 +293,7 @@ struct Spec {
+ 		Choice(kOptionComposerIndentation, { u"2"_q, u"4"_q, u"tab"_q }),
+ 		Toggle(kOptionHideGiftButton),
+ 		Toggle(kOptionHideRecordButton),
++		Toggle(kOptionHideForeignAgent),
+ 		Toggle(kOptionHideBirthdays),
+ 		Toggle(kOptionSilentByDefault),
+ 		Toggle(kOptionSilentPerChat),
+diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+index 79056c697b24b28b52608f8678312d62d01d29cd..558a49c78f667488f1a1e4c058a1da50007ec85b 100644
+--- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
++++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+@@ -1,6 +1,7 @@
+ #include "tele/tele_single_paths.h"
+ #include "tele/tele_wav_music.h"
+ #include "tele/tele_pinned_bar_rules.h"
++#include "tele/tele_foreign_agent_ranges.h"
+ 
+ #include <cstdio>
+ #include <cstdlib>
+@@ -54,11 +55,29 @@ void TestPinnedBarRules() {
+ 	Require(!PinnedBarRule(rules, QStringLiteral("2")).has_value(), "test key differs");
+ }
+ 
++[[nodiscard]] QString Stripped(const QString &text) {
++	return Tele::WithoutRanges(text, Tele::ForeignAgentRanges(text));
++}
++
++void TestForeignAgent() {
++	Require(Stripped(QStringLiteral("НАСТОЯЩИЙ МАТЕРИАЛ (ИНФОРМАЦИЯ) ПРОИЗВЕДЕН И (ИЛИ) РАСПРОСТРАНЕН ИНОСТРАННЫМ АГЕНТОМ ИВАНОВЫМ ИВАНОМ ЛИБО КАСАЕТСЯ ДЕЯТЕЛЬНОСТИ ИНОСТРАННОГО АГЕНТА ИВАНОВА ИВАНА. 18+\n\nНовости дня"))
++		== QStringLiteral("Новости дня"), "foreign agent disclaimer");
++	Require(Stripped(QStringLiteral("Пост про что-то\n* номер в списке Минюста 777"))
++		== QStringLiteral("Пост про что-то"), "ministry footnote");
++	Require(Stripped(QStringLiteral("ДАННОЕ СООБЩЕНИЕ (МАТЕРИАЛ) СОЗДАНО И (ИЛИ) РАСПРОСТРАНЕНО ИНОСТРАННЫМ СРЕДСТВОМ МАССОВОЙ ИНФОРМАЦИИ.\nжир"))
++		== QStringLiteral("жир"), "foreign media disclaimer");
++	Require(Stripped(QStringLiteral("Настоящий материал произведён иностранным агентом. Текст"))
++		== QStringLiteral("Текст"), "lowercase and yo");
++	Require(Tele::ForeignAgentRanges(QStringLiteral("обычный текст про агентов")).empty(), "plain text");
++	Require(Stripped(QStringLiteral("18+")).trimmed().isEmpty(), "only the age mark");
++}
++
+ } // namespace
+ 
+ int main() {
+ 	TestSinglePaths();
+ 	TestWavFiles();
+ 	TestPinnedBarRules();
++	TestForeignAgent();
+ 	return 0;
+ }
+diff --git a/Telegram/cmake/mad_tests.cmake b/Telegram/cmake/mad_tests.cmake
+index deed47734aac77a1b636a9d224e4a52b644ada2e..385ad4d2dff958f4f8560c109a2a8da7b267ca1d 100644
+--- a/Telegram/cmake/mad_tests.cmake
++++ b/Telegram/cmake/mad_tests.cmake
+@@ -47,6 +47,7 @@ target_sources(mad_logic_tests PRIVATE
+     ${src_loc}/tele/tele_single_paths.cpp
+     ${src_loc}/tele/tele_wav_music.cpp
+     ${src_loc}/tele/tele_pinned_bar_rules.cpp
++    ${src_loc}/tele/tele_foreign_agent_ranges.cpp
+     ${src_loc}/tele/tests/mad_logic_tests.cpp
+ )
+ target_link_libraries(mad_logic_tests PRIVATE
