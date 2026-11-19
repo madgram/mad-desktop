@@ -249,6 +249,7 @@ settings → tele → privacy.
 | [391](../patches/tdesktop/0391-fix-chats-with-many-hidden-messages-stay-smooth.patch) | a chat full of messages from ignored or hidden users no longer lags or flickers while they spam: each hidden message no longer re-checks every hidden neighbour | with 16 |
 | [392](../patches/tdesktop/0392-fix-comments-full-of-hidden-messages-stop-jumping-be.patch) | comments where most messages come from ignored or hidden users no longer jump between two places and flicker: hidden messages no longer count as distance when the list decides to load around another message | with 16 |
 | [394](../patches/tdesktop/0394-fix-a-hidden-message-leaves-no-empty-space-behind.patch) | a message hidden after it was shown no longer leaves a faded copy or empty space until the chat is reopened: a message whose hidden state no longer matches its layout is laid out again with its neighbours | with 16 |
+| [396](../patches/tdesktop/0396-fix-hidden-messages-leave-no-gaps-stray-dates-or-unr.patch) | hidden messages leave no gaps, stray dates or unread bars: comments and chats link bubbles across hidden messages, the next shown message gets its date, and the unread bar lands on the first shown unread message | with 16 |
 
 ## profiles and ids
 

@@ -1,0 +1,116 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 02:53:52 +0200
+Subject: [PATCH] fix: hidden messages leave no gaps, stray dates or unread
+ bars
+
+---
+ Telegram/SourceFiles/history/history.cpp      |  4 ++-
+ .../history/view/history_view_element.cpp     |  2 +-
+ .../history/view/history_view_list_widget.cpp | 31 ++++++++++++++-----
+ .../view/history_view_service_message.cpp     |  3 ++
+ 4 files changed, 31 insertions(+), 9 deletions(-)
+
+diff --git a/Telegram/SourceFiles/history/history.cpp b/Telegram/SourceFiles/history/history.cpp
+index efe21ec7e9f77a9f86ba502a0997025d1b6003df..3ddf7d29748f83541d2244ab9b74602b5a9e7c1a 100644
+--- a/Telegram/SourceFiles/history/history.cpp
++++ b/Telegram/SourceFiles/history/history.cpp
+@@ -2171,7 +2171,9 @@ void History::calculateFirstUnreadMessage() {
+ 				continue;
+ 			} else if (!item->out()) {
+ 				if (item->id >= *_inboxReadBefore) {
+-					_firstUnreadView = message.get();
++					if (!message->isHidden()) {
++						_firstUnreadView = message.get();
++					}
+ 				} else {
+ 					return;
+ 				}
+diff --git a/Telegram/SourceFiles/history/view/history_view_element.cpp b/Telegram/SourceFiles/history/view/history_view_element.cpp
+index b04a62bb745089e3fb0f98a3fc08cee8da6170c8..aec6dd3d57f327108f71075a02e6e0f9d81feca7 100644
+--- a/Telegram/SourceFiles/history/view/history_view_element.cpp
++++ b/Telegram/SourceFiles/history/view/history_view_element.cpp
+@@ -2633,7 +2633,7 @@ bool Element::isInOneBunchWithPrevious() const {
+ void Element::recountAttachToPreviousInBlocks() {
+ 	if (isHidden() || data()->isEmpty()) {
+ 		if (const auto next = nextDisplayedInBlocks()) {
+-			next->recountAttachToPreviousInBlocks();
++			next->previousInBlocksChanged();
+ 		} else if (const auto previous = previousDisplayedInBlocks()) {
+ 			previous->setAttachToNext(false);
+ 		}
+diff --git a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
+index 86c3b6aaf15727a7fea336ec9a3612449db232cf..907e70a5d104a544dbda031f09ca1182cac7c42c 100644
+--- a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
++++ b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
+@@ -6246,11 +6246,9 @@ void ListWidget::refreshAttachmentsAtIndex(int index) {
+ 	Expects(index >= 0 && index < _items.size());
+ 
+ 	const auto from = [&] {
+-		if (index > 0) {
+-			for (auto i = index - 1; i != 0; --i) {
+-				if (!_items[i]->isHidden()) {
+-					return i;
+-				}
++		for (auto i = index; i != 0;) {
++			if (!_items[--i]->isHidden()) {
++				return i;
+ 			}
+ 		}
+ 		return index;
+@@ -6287,13 +6285,29 @@ void ListWidget::refreshAttachmentsFromTill(int from, int till) {
+ 		}
+ 		return nullptr;
+ 	};
+-	auto view = _items[from].get();
+-	view->refreshForumThreadBar(previousShown(), showBars);
++	auto view = (Element*)nullptr;
++	if (_items[from]->isHidden()) {
++		_items[from]->refreshForumThreadBar(nullptr, showBars);
++		_items[from]->setDisplayDate(false);
++		_items[from]->setAttachToPrevious(false);
++		_items[from]->setAttachToNext(false);
++		view = previousShown();
++	} else {
++		view = _items[from].get();
++		view->refreshForumThreadBar(previousShown(), showBars);
++	}
+ 	for (auto i = from + 1; i != till; ++i) {
+ 		const auto next = _items[i].get();
+ 		if (next->isHidden()) {
+ 			next->refreshForumThreadBar(nullptr, showBars);
+ 			next->setDisplayDate(false);
++			next->setAttachToPrevious(false);
++			next->setAttachToNext(false);
++		} else if (!view) {
++			next->refreshForumThreadBar(nullptr, showBars);
++			next->setDisplayDate(!hidesDates);
++			next->setAttachToPrevious(false);
++			view = next;
+ 		} else {
+ 			next->refreshForumThreadBar(view, showBars);
+ 			const auto viewDate = view->dateTime();
+@@ -6309,6 +6323,9 @@ void ListWidget::refreshAttachmentsFromTill(int from, int till) {
+ 	}
+ 	if (till == int(_items.size())) {
+ 		_items.back()->setAttachToNext(false);
++		if (view) {
++			view->setAttachToNext(false);
++		}
+ 	}
+ }
+ 
+diff --git a/Telegram/SourceFiles/history/view/history_view_service_message.cpp b/Telegram/SourceFiles/history/view/history_view_service_message.cpp
+index fae430b1c47418fbfd964b821c2f11451e61fac3..b0b36d89289ccd43f1a63bddc0b0eaf2d756d4c2 100644
+--- a/Telegram/SourceFiles/history/view/history_view_service_message.cpp
++++ b/Telegram/SourceFiles/history/view/history_view_service_message.cpp
+@@ -608,6 +608,9 @@ int Service::marginTop() const {
+ }
+ 
+ int Service::marginBottom() const {
++	if (isHidden()) {
++		return 0;
++	}
+ 	auto result = st::msgServiceMargin.bottom();
+ 	if (const auto margins = Get<ViewAddedMargins>()) {
+ 		result += margins->bottom;
