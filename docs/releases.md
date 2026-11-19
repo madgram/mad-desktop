@@ -2,7 +2,7 @@
 
 every tele patch, grouped by the release that brought it, newest first. [features](features.md) has the same rows grouped by settings page. release notes and the in-app what's new are made from these rows, so their format is strict: see [the patch row](development.md#the-patch-row).
 
-all 405 patches, newest release first.
+all 406 patches, newest release first.
 
 ### [mad dev](mad.md)
 
@@ -67,6 +67,7 @@ all 405 patches, newest release first.
 | [392](../patches/tdesktop/0392-fix-comments-full-of-hidden-messages-stop-jumping-be.patch) | comments where most messages come from ignored or hidden users no longer jump between two places and flicker: hidden messages no longer count as distance when the list decides to load around another message | with 16 |
 | [393](../patches/tdesktop/0393-fix-badge-card-titles-shrink-to-fit-one-line.patch) | a long badge title gets a smaller font until it fits on one line instead of ending in an ellipsis, and wraps only when even the smallest size is too wide | with 382 |
 | [394](../patches/tdesktop/0394-fix-a-hidden-message-leaves-no-empty-space-behind.patch) | a message hidden after it was shown no longer leaves a faded copy or empty space until the chat is reopened: a message whose hidden state no longer matches its layout is laid out again with its neighbours | with 16 |
+| [395](../patches/tdesktop/0395-fix-mad-badges-no-longer-freeze-or-crash-the-client.patch) | mad badges no longer crash or freeze the client: a badge only refreshes the names whose badge or color really changed, a missing repaint callback is ignored, and the registry is fetched every ten minutes instead of every minute | with 337 |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1009](../patches/Telegram/lib_rpl/0001-fix-topic-tabs-no-longer-crash-after-you-move-them.patch) | topic and direct message tabs no longer crash after you move them to the top, bottom or side and then scroll them. the cause was in the library that passes events around, so anything else that lost updates the same way is fixed too | always on |
 | [1010](../patches/Telegram/ThirdParty/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs/0001-fix-refuse-await-using-outside-async-functions.patch) | closes the quickjs hole that let a bot's message widget run any program on your pc: the engine gets telegram's own `await using` fix from widget-sandbox 0.6.4, which telegram desktop 7.4.2 ships without | always on |

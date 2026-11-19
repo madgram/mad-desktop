@@ -1,0 +1,288 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 02:53:02 +0200
+Subject: [PATCH] fix: mad badges no longer freeze or crash the client
+
+---
+ Telegram/SourceFiles/tele/tele_mad_badges.cpp | 79 +++++++++----------
+ .../SourceFiles/tele/tele_mad_registry.cpp    | 42 ++++++++++
+ Telegram/SourceFiles/tele/tele_mad_registry.h |  6 ++
+ .../tele/tests/mad_registry_tests.cpp         |  8 ++
+ 4 files changed, 95 insertions(+), 40 deletions(-)
+
+diff --git a/Telegram/SourceFiles/tele/tele_mad_badges.cpp b/Telegram/SourceFiles/tele/tele_mad_badges.cpp
+index a21abb813ab7ab7dc5a88a67ddd387ee2214037a..f3d1e4dd8638e1d78e5583e0ea4123e691a44986 100644
+--- a/Telegram/SourceFiles/tele/tele_mad_badges.cpp
++++ b/Telegram/SourceFiles/tele/tele_mad_badges.cpp
+@@ -3,6 +3,7 @@
+ #include "base/options.h"
+ #include "boxes/abstract_box.h"
+ #include "base/timer.h"
++#include "base/weak_ptr.h"
+ #include "core/application.h"
+ #include "core/click_handler_types.h"
+ #include "data/data_changes.h"
+@@ -48,6 +49,7 @@ namespace {
+ 
+ constexpr auto kMaxBytes = qint64(2 * 1024 * 1024);
+ constexpr auto kCacheBytes = qint64(25 * 1024 * 1024);
++constexpr auto kFetchEveryTicks = 10;
+ 
+ [[nodiscard]] QString Prefix() {
+ 	return u"mad-badge:"_q;
+@@ -96,7 +98,8 @@ public:
+ 
+ private:
+ 	void notify();
+-	void notifyLater();
++	void repaintLater();
++	[[nodiscard]] QMap<QString, QString> signatures() const;
+ 	void trim();
+ 	void request(const QUrl &url, const QByteArray &etag,
+ 		Fn<void(int, QByteArray, QByteArray, QByteArray)> done);
+@@ -108,13 +111,13 @@ private:
+ 	QSet<QNetworkReply*> _requests;
+ 	QSet<QString> _imagesInFlight;
+ 	QSet<QString> _diskChecked;
+-	QSet<QString> _activeTargets;
++	QMap<QString, QString> _signatures;
+ 	QMap<QString, QImage> _images;
+ 	QMap<QString, qint64> _imageRetryAt;
+-	QSet<QString> _targets;
++	int _ticks = 0;
+ 	std::vector<Fn<void(QString)>> _waiting;
+ 	bool _fetching = false;
+-	bool _notifyScheduled = false;
++	bool _repaintScheduled = false;
+ 	uint64 _generation = 0;
+ 	rpl::lifetime _lifetime;
+ 
+@@ -139,17 +142,13 @@ RegistryStore::RegistryStore() : QObject(QCoreApplication::instance()) {
+ 		}
+ 	}
+ 	QObject::connect(&_timer, &QTimer::timeout, this, [=] {
+-		auto active = QSet<QString>();
+-		const auto now = QDateTime::currentSecsSinceEpoch();
+-		for (auto i = _registry.assignments.cbegin(); i != _registry.assignments.cend(); ++i) {
+-			if (FindMadBadge(_registry, i.key(), now)) {
+-				active.insert(i.key());
+-			}
+-		}
+-		if (active != _activeTargets) {
++		if (signatures() != _signatures) {
+ 			notify();
+ 		}
+-		fetch();
++		if (++_ticks >= kFetchEveryTicks) {
++			_ticks = 0;
++			fetch();
++		}
+ 	});
+ 	_timer.start(60000);
+ 	base::options::lookup<bool>(kOptionMadBadges).changes()
+@@ -279,36 +278,30 @@ void RegistryStore::fetch(Fn<void(QString)> done) {
+ 		});
+ }
+ 
+-void RegistryStore::notifyLater() {
+-	if (std::exchange(_notifyScheduled, true)) {
++void RegistryStore::repaintLater() {
++	if (std::exchange(_repaintScheduled, true)) {
+ 		return;
+ 	}
+ 	QTimer::singleShot(0, this, [=] {
+-		_notifyScheduled = false;
+-		notify();
++		_repaintScheduled = false;
++		++version;
++		changes.fire({});
+ 	});
+ }
+ 
++QMap<QString, QString> RegistryStore::signatures() const {
++	return MadBadgesEnabled()
++		? MadTargetSignatures(_registry, QDateTime::currentSecsSinceEpoch())
++		: QMap<QString, QString>();
++}
++
+ void RegistryStore::notify() {
+-	_activeTargets.clear();
+-	const auto now = QDateTime::currentSecsSinceEpoch();
+-	for (auto i = _registry.assignments.cbegin(); i != _registry.assignments.cend(); ++i) {
+-		if (FindMadBadge(_registry, i.key(), now)) {
+-			_activeTargets.insert(i.key());
+-		}
+-	}
+-	auto targets = std::exchange(_targets, {});
+-	for (auto i = _registry.assignments.cbegin(); i != _registry.assignments.cend(); ++i) {
+-		_targets.insert(i.key());
+-		targets.insert(i.key());
+-	}
+-	for (auto i = _registry.names.cbegin(); i != _registry.names.cend(); ++i) {
+-		_targets.insert(i.key());
+-		targets.insert(i.key());
+-	}
++	auto now = signatures();
++	const auto targets = ChangedMadTargets(_signatures, now);
++	_signatures = std::move(now);
+ 	++version;
+ 	changes.fire({});
+-	if (!Core::IsAppLaunched()) {
++	if (targets.isEmpty() || !Core::IsAppLaunched()) {
+ 		return;
+ 	}
+ 	for (const auto &[index, account] : Core::App().domain().accounts()) {
+@@ -374,7 +367,7 @@ QImage RegistryStore::image(const MadBadge &badge, int size) {
+ 			_images.insert(key, image);
+ 			WriteFile(path, bytes);
+ 			trim();
+-			notifyLater();
++			repaintLater();
+ 		});
+ 	return {};
+ }
+@@ -396,7 +389,6 @@ void RegistryStore::clear() {
+ 	for (const auto reply : requests) {
+ 		reply->abort();
+ 	}
+-	notify();
+ 	_registry = {};
+ 	_etag.clear();
+ 	_images.clear();
+@@ -418,7 +410,13 @@ class BadgeObject final : public Ui::Text::CustomEmoji {
+ public:
+ 	BadgeObject(QString target, QString id, not_null<Main::Session*> session, Fn<void()> repaint, int size)
+ 	: _target(std::move(target)), _id(std::move(id)), _session(session), _repaint(std::move(repaint)), _size(size) {
+-		MadBadgesChanges() | rpl::on_next([=] { _repaint(); }, _lifetime);
++		if (_repaint) {
++			MadBadgesChanges() | rpl::on_next([=] {
++				if (const auto onstack = _repaint) {
++					onstack();
++				}
++			}, _lifetime);
++		}
+ 	}
+ 	int width() override { return _size; }
+ 	QString entityData() override { return Prefix() + _target + '/' + _id; }
+@@ -427,13 +425,14 @@ public:
+ 	}
+ 	void paint(QPainter &p, const Context &context) override {
+ 		const auto badge = Store && MadBadgesEnabled() ? Store->badge(_id) : std::nullopt;
+-		if (!badge || _session->isTestMode() || !Store->assigned(_target, _id)) {
++		const auto session = _session.get();
++		if (!badge || !session || session->isTestMode() || !Store->assigned(_target, _id)) {
+ 			return;
+ 		}
+ 		if (badge->documentId) {
+ 			if (!_emoji || _documentId != badge->documentId) {
+ 				_documentId = badge->documentId;
+-				_emoji = _session->data().customEmojiManager().create(
++				_emoji = session->data().customEmojiManager().create(
+ 					Data::SerializeCustomEmojiId(DocumentId(_documentId)), _repaint,
+ 					Data::CustomEmojiSizeTag::Normal, _size);
+ 			}
+@@ -452,7 +451,7 @@ public:
+ private:
+ 	QString _target;
+ 	QString _id;
+-	not_null<Main::Session*> _session;
++	base::weak_ptr<Main::Session> _session;
+ 	Fn<void()> _repaint;
+ 	int _size = 0;
+ 	uint64 _documentId = 0;
+diff --git a/Telegram/SourceFiles/tele/tele_mad_registry.cpp b/Telegram/SourceFiles/tele/tele_mad_registry.cpp
+index 345dd6ba1f3e3283d936661a343f568f331bc9ad..38c365f89771e7ea9cbd694f4fe8b3d1ad70302c 100644
+--- a/Telegram/SourceFiles/tele/tele_mad_registry.cpp
++++ b/Telegram/SourceFiles/tele/tele_mad_registry.cpp
+@@ -103,6 +103,48 @@ MadName FindMadName(const MadRegistry &registry, const QString &target, qint64 n
+ 		: *i;
+ }
+ 
++QMap<QString, QString> MadTargetSignatures(
++		const MadRegistry &registry,
++		qint64 now) {
++	auto result = QMap<QString, QString>();
++	for (auto i = registry.assignments.cbegin(); i != registry.assignments.cend(); ++i) {
++		if (const auto badge = FindMadBadge(registry, i.key(), now)) {
++			result[i.key()] = QStringLiteral("b:") + badge->id;
++		}
++	}
++	for (auto i = registry.names.cbegin(); i != registry.names.cend(); ++i) {
++		const auto name = FindMadName(registry, i.key(), now);
++		if (name.colors.empty()) {
++			continue;
++		}
++		auto signature = QStringLiteral("n:%1").arg(int(name.effect));
++		for (const auto &color : name.colors) {
++			signature += ',' + color.name(QColor::HexRgb);
++		}
++		auto &value = result[i.key()];
++		value = value.isEmpty() ? signature : (value + ';' + signature);
++	}
++	return result;
++}
++
++QStringList ChangedMadTargets(
++		const QMap<QString, QString> &was,
++		const QMap<QString, QString> &now) {
++	auto result = QStringList();
++	for (auto i = was.cbegin(); i != was.cend(); ++i) {
++		const auto j = now.constFind(i.key());
++		if (j == now.cend() || *j != *i) {
++			result.push_back(i.key());
++		}
++	}
++	for (auto i = now.cbegin(); i != now.cend(); ++i) {
++		if (!was.contains(i.key())) {
++			result.push_back(i.key());
++		}
++	}
++	return result;
++}
++
+ bool MadAssetUrlAllowed(const QUrl &url) {
+ 	const auto query = QUrlQuery(url).queryItems();
+ 	const auto versioned = query.size() == 1
+diff --git a/Telegram/SourceFiles/tele/tele_mad_registry.h b/Telegram/SourceFiles/tele/tele_mad_registry.h
+index fc803fb6bb1e448a6850e2dda4b9b0838471b55a..9dac3f983cd7b885ecb416540a92f98f4cbc67fb 100644
+--- a/Telegram/SourceFiles/tele/tele_mad_registry.h
++++ b/Telegram/SourceFiles/tele/tele_mad_registry.h
+@@ -3,6 +3,7 @@
+ #include <QtCore/QByteArray>
+ #include <QtCore/QMap>
+ #include <QtCore/QString>
++#include <QtCore/QStringList>
+ #include <QtCore/QUrl>
+ #include <QtGui/QColor>
+ #include <QtGui/QImage>
+@@ -57,6 +58,11 @@ struct MadRegistry {
+ 	const MadRegistry &registry, const QString &target, qint64 now);
+ [[nodiscard]] MadName FindMadName(
+ 	const MadRegistry &registry, const QString &target, qint64 now);
++[[nodiscard]] QMap<QString, QString> MadTargetSignatures(
++	const MadRegistry &registry, qint64 now);
++[[nodiscard]] QStringList ChangedMadTargets(
++	const QMap<QString, QString> &was,
++	const QMap<QString, QString> &now);
+ [[nodiscard]] bool MadAssetUrlAllowed(const QUrl &url);
+ [[nodiscard]] std::optional<MadRegistry> DecodeMadRegistry(
+ 	const QByteArray &envelope,
+diff --git a/Telegram/SourceFiles/tele/tests/mad_registry_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_registry_tests.cpp
+index 081cdf2fa42b2caeb87d98093260e9c1270bf042..508c4e9db557a05d1ca4a4db771e8fc9b89d8fe5 100644
+--- a/Telegram/SourceFiles/tele/tests/mad_registry_tests.cpp
++++ b/Telegram/SourceFiles/tele/tests/mad_registry_tests.cpp
+@@ -118,6 +118,14 @@ int main(int argc, char **argv) {
+ 	Require(Tele::FindMadName(*named, QStringLiteral("channel:5"), 1700000009).effect == Tele::MadNameEffect::Static, "unknown effect stays static");
+ 	Require(Tele::FindMadName(*named, QStringLiteral("channel:5"), 1700000010).colors.empty(), "name at expiry");
+ 	Require(Tele::FindMadName(*parsed, QStringLiteral("user:9007199254740993"), 1700000000).colors.empty(), "no names");
++	const auto signaturesBefore = Tele::MadTargetSignatures(*named, 1700000009);
++	const auto signaturesAfter = Tele::MadTargetSignatures(*named, 1700000010);
++	Require(signaturesBefore.contains(QStringLiteral("channel:5")), "signature before expiry");
++	Require(!signaturesAfter.contains(QStringLiteral("channel:5")), "no signature after expiry");
++	Require(Tele::ChangedMadTargets(signaturesBefore, signaturesAfter) == QStringList{ QStringLiteral("channel:5") }, "only expired target changed");
++	Require(Tele::ChangedMadTargets(signaturesAfter, signaturesAfter).isEmpty(), "nothing changed");
++	Require(Tele::ChangedMadTargets({}, signaturesAfter).size() == signaturesAfter.size(), "new targets changed");
++	Require(Tele::MadTargetSignatures(*parsed, 1700000000) != Tele::MadTargetSignatures(*named, 1700000000), "names change signatures");
+ 	changed["names"] = QJsonArray{ QJsonObject{ { "peerType", "user" }, { "peerId", 1 }, { "colors", QJsonArray{ "red" } } } };
+ 	Require(!decode(sign(Encode(changed))), "invalid name color");
+ 	changed["names"] = QJsonArray{ QJsonObject{ { "peerType", "user" }, { "peerId", 1 }, { "colors", QJsonArray() } } };
