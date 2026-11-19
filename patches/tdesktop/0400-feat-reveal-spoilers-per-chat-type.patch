@@ -1,0 +1,273 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:06:25 +0200
+Subject: [PATCH] feat: reveal spoilers per chat type
+
+---
+ Telegram/Resources/langs/mad_ru.json          |  5 +-
+ .../dialogs/ui/dialogs_message_view.cpp       |  3 +-
+ .../media/view/media_view_overlay_widget.cpp  |  4 +-
+ .../SourceFiles/settings/settings_tele.cpp    | 15 +++++-
+ Telegram/SourceFiles/tele/tele_options.cpp    | 50 ++++++++++++++++++-
+ Telegram/SourceFiles/tele/tele_options.h      |  8 +++
+ .../SourceFiles/tele/tele_settings_io.cpp     |  4 ++
+ Telegram/SourceFiles/tele/tele_spoilers.cpp   | 23 +++++++--
+ Telegram/SourceFiles/tele/tele_spoilers.h     |  4 +-
+ 9 files changed, 106 insertions(+), 10 deletions(-)
+
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index ec013da718878fd3619a132c7026f7febb76d4f1..014ef0576102358b17ec8274662a84ecbb8751ce 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2145,5 +2145,8 @@
+   "Unread count in the title": "Непрочитанные в заголовке",
+   "The number of unread chats, as in the taskbar badge.": "Сколько непрочитанных, как на значке в панели задач.",
+   "Build number in the title": "Номер сборки в заголовке",
+-  "Shows which mad build is running.": "Показывает, какая сборка mad запущена."
++  "Shows which mad build is running.": "Показывает, какая сборка mad запущена.",
++  "In private chats": "В личных чатах",
++  "In groups": "В группах",
++  "In channels": "В каналах"
+ }
+diff --git a/Telegram/SourceFiles/dialogs/ui/dialogs_message_view.cpp b/Telegram/SourceFiles/dialogs/ui/dialogs_message_view.cpp
+index 228288bd82fc99796bc616161ed784fb00bf1326..8d80b8708ff5ba6a7150c6be1b0c9a7d39ef4bf0 100644
+--- a/Telegram/SourceFiles/dialogs/ui/dialogs_message_view.cpp
++++ b/Telegram/SourceFiles/dialogs/ui/dialogs_message_view.cpp
+@@ -186,7 +186,8 @@ void MessageView::prepare(
+ 	options.existing = &_imagesCache;
+ 	options.ignoreTopic = true;
+ 	options.spoilerLoginCode = true;
+-	options.revealSpoilers = ::Tele::RevealSpoilers();
++	options.revealSpoilers = ::Tele::RevealSpoilersIn(
++		item->history()->peer);
+ 	auto preview = item->toPreview(options);
+ 	_leftIcon = (preview.icon == ItemPreview::Icon::ForwardedMessage)
+ 		? &st::dialogsMiniForward
+diff --git a/Telegram/SourceFiles/media/view/media_view_overlay_widget.cpp b/Telegram/SourceFiles/media/view/media_view_overlay_widget.cpp
+index dee451c264952d10c1224b7ce033176a35db9a8b..7aa9c679f8ae66c604ecafeb51d9e14b75529110 100644
+--- a/Telegram/SourceFiles/media/view/media_view_overlay_widget.cpp
++++ b/Telegram/SourceFiles/media/view/media_view_overlay_widget.cpp
+@@ -4371,7 +4371,9 @@ void OverlayWidget::refreshCaption() {
+ 			return (weak != nullptr);
+ 		});
+ 	}
+-	::Tele::RevealTextSpoilers(_caption);
++	::Tele::RevealTextSpoilers(
++		_caption,
++		_message ? _message->history()->peer.get() : nullptr);
+ 	if (_caption.hasCollapsedBlockquots()) {
+ 		_caption.setBlockquoteExpandCallback(crl::guard(_widget, [=](
+ 				int index,
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index a4cd85ea6f91e0e323d8ce5fc8cec9f9857bb998..23be7bf018c028347d22ebc48ec7c2f36d9e9cf4 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -3322,7 +3322,20 @@ void FillMessages(SectionBuilder &builder) {
+ 		});
+ 	AddGroupDivider(builder);
+ 	AddGroupTitle(builder, u"Spoilers"_q);
+-	AddOptionToggle(builder, ::Tele::kOptionRevealSpoilers);
++	AddOptionToggle(builder, ::Tele::kOptionRevealSpoilers, {}, {}, [&] {
++		for (const auto id : {
++			::Tele::kOptionRevealSpoilersPrivate,
++			::Tele::kOptionRevealSpoilersGroups,
++			::Tele::kOptionRevealSpoilersChannels,
++			::Tele::kOptionRevealSpoilersSaved,
++		}) {
++			AddOptionToggle(
++				builder,
++				id,
++				{ u"spoiler"_q },
++				::Tele::kOptionRevealSpoilers);
++		}
++	});
+ 	AddGroupDivider(builder);
+ 	AddGroupTitle(builder, u"Disappearing media"_q);
+ 	AddOptionToggle(builder, ::Tele::kOptionKeepSecretMedia);
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index ebdf1207234177d4d744236c30933d360c3f7523..29ee76e2625b58b293cfb065ca88cd6d9f12e73c 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -143,6 +143,10 @@ const char kOptionDeletedReply[] = "tele-deleted-reply";
+ const char kOptionDeletedQuoteName[] = "tele-deleted-quote-name";
+ const char kOptionSavedHistoryPeriod[] = "tele-saved-history-period";
+ const char kOptionRevealSpoilers[] = "tele-reveal-spoilers";
++const char kOptionRevealSpoilersPrivate[] = "tele-reveal-spoilers-private";
++const char kOptionRevealSpoilersGroups[] = "tele-reveal-spoilers-groups";
++const char kOptionRevealSpoilersChannels[] = "tele-reveal-spoilers-channels";
++const char kOptionRevealSpoilersSaved[] = "tele-reveal-spoilers-saved";
+ const char kOptionCodeLineNumbers[] = "tele-code-line-numbers";
+ const char kOptionHideBubbleTails[] = "tele-hide-bubble-tails";
+ const char kOptionBubblePadding[] = "tele-bubble-padding";
+@@ -1114,6 +1118,29 @@ base::options::toggle RevealSpoilersOption({
+ 	.name = "Reveal spoilers automatically",
+ });
+ 
++base::options::toggle RevealSpoilersPrivateOption({
++	.id = kOptionRevealSpoilersPrivate,
++	.name = "In private chats",
++	.defaultValue = true,
++});
++
++base::options::toggle RevealSpoilersGroupsOption({
++	.id = kOptionRevealSpoilersGroups,
++	.name = "In groups",
++	.defaultValue = true,
++});
++
++base::options::toggle RevealSpoilersChannelsOption({
++	.id = kOptionRevealSpoilersChannels,
++	.name = "In channels",
++	.defaultValue = true,
++});
++
++base::options::toggle RevealSpoilersSavedOption({
++	.id = kOptionRevealSpoilersSaved,
++	.name = "In Saved Messages",
++});
++
+ base::options::toggle CodeLineNumbersOption({
+ 	.id = kOptionCodeLineNumbers,
+ 	.name = "Line numbers in code blocks",
+@@ -3166,8 +3193,29 @@ bool RevealSpoilers() {
+ 	return RevealSpoilersOption.value();
+ }
+ 
++bool RevealSpoilersPrivate() {
++	return RevealSpoilersPrivateOption.value();
++}
++
++bool RevealSpoilersGroups() {
++	return RevealSpoilersGroupsOption.value();
++}
++
++bool RevealSpoilersChannels() {
++	return RevealSpoilersChannelsOption.value();
++}
++
++bool RevealSpoilersSaved() {
++	return RevealSpoilersSavedOption.value();
++}
++
+ rpl::producer<> RevealSpoilersChanges() {
+-	return RevealSpoilersOption.changes();
++	return rpl::merge(
++		RevealSpoilersOption.changes(),
++		RevealSpoilersPrivateOption.changes(),
++		RevealSpoilersGroupsOption.changes(),
++		RevealSpoilersChannelsOption.changes(),
++		RevealSpoilersSavedOption.changes());
+ }
+ 
+ bool CodeLineNumbers() {
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index 1248b7af0eeb3a439659039701b780d9546d7349..766517cc498566e5ad64b2550f42b297c12bde2c 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -138,6 +138,10 @@ extern const char kOptionDeletedReply[];
+ extern const char kOptionDeletedQuoteName[];
+ extern const char kOptionSavedHistoryPeriod[];
+ extern const char kOptionRevealSpoilers[];
++extern const char kOptionRevealSpoilersPrivate[];
++extern const char kOptionRevealSpoilersGroups[];
++extern const char kOptionRevealSpoilersChannels[];
++extern const char kOptionRevealSpoilersSaved[];
+ extern const char kOptionCodeLineNumbers[];
+ extern const char kOptionHideBubbleTails[];
+ extern const char kOptionBubblePadding[];
+@@ -493,6 +497,10 @@ void SetDeletedQuoteName(const QString &value);
+ void SetSavedHistoryPeriod(const QString &value);
+ [[nodiscard]] rpl::producer<QString> SavedHistoryPeriodValue();
+ [[nodiscard]] bool RevealSpoilers();
++[[nodiscard]] bool RevealSpoilersPrivate();
++[[nodiscard]] bool RevealSpoilersGroups();
++[[nodiscard]] bool RevealSpoilersChannels();
++[[nodiscard]] bool RevealSpoilersSaved();
+ [[nodiscard]] rpl::producer<> RevealSpoilersChanges();
+ [[nodiscard]] bool CodeLineNumbers();
+ [[nodiscard]] bool HideBubbleTails();
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index a4321097a08b702259c8f937d5406d0e59c67993..bd3a05897acd35b1f9cc3876199013336ff3da1e 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -236,6 +236,10 @@ struct Spec {
+ 		Toggle(kOptionDeletedIcon),
+ 		Toggle(kOptionDeletedOutOfLists),
+ 		Toggle(kOptionRevealSpoilers),
++		Toggle(kOptionRevealSpoilersPrivate),
++		Toggle(kOptionRevealSpoilersGroups),
++		Toggle(kOptionRevealSpoilersChannels),
++		Toggle(kOptionRevealSpoilersSaved),
+ 		Toggle(kOptionCodeLineNumbers),
+ 		Toggle(kOptionHideBubbleTails),
+ 		Toggle(kOptionBubblePadding),
+diff --git a/Telegram/SourceFiles/tele/tele_spoilers.cpp b/Telegram/SourceFiles/tele/tele_spoilers.cpp
+index 217d07c28c2df03176c9eb84054d413085c29111..6648493395384121a2218883e43c8e1b43aff7a7 100644
+--- a/Telegram/SourceFiles/tele/tele_spoilers.cpp
++++ b/Telegram/SourceFiles/tele/tele_spoilers.cpp
+@@ -129,7 +129,7 @@ void Track(not_null<HistoryView::Element*> view) {
+ }
+ 
+ [[nodiscard]] bool RevealsIn(not_null<HistoryView::Element*> view) {
+-	return RevealSpoilers()
++	return RevealSpoilersIn(view->data()->history()->peer)
+ 		&& (view->delegate()->elementContext()
+ 			!= HistoryView::Context::ContactPreview);
+ }
+@@ -140,8 +140,23 @@ void InvalidateAllPreviews() {
+ 	EnumerateSessions(InvalidatePreviews);
+ }
+ 
+-void RevealTextSpoilers(Ui::Text::String &text) {
+-	if (RevealSpoilers() && text.hasSpoilers()) {
++bool RevealSpoilersIn(PeerData *peer) {
++	if (!RevealSpoilers()) {
++		return false;
++	} else if (!peer) {
++		return true;
++	} else if (peer->isSelf()) {
++		return RevealSpoilersSaved();
++	} else if (peer->isUser()) {
++		return RevealSpoilersPrivate();
++	} else if (peer->isBroadcast()) {
++		return RevealSpoilersChannels();
++	}
++	return RevealSpoilersGroups();
++}
++
++void RevealTextSpoilers(Ui::Text::String &text, PeerData *peer) {
++	if (RevealSpoilersIn(peer) && text.hasSpoilers()) {
+ 		text.setSpoilerRevealed(true, anim::type::instant);
+ 	}
+ }
+@@ -190,7 +205,7 @@ void RevealPreviewSpoilers(
+ 			return;
+ 		}
+ 	}
+-	RevealTextSpoilers(text);
++	RevealTextSpoilers(text, item->history()->peer);
+ }
+ 
+ bool RevealPreviewSpoiler(
+diff --git a/Telegram/SourceFiles/tele/tele_spoilers.h b/Telegram/SourceFiles/tele/tele_spoilers.h
+index 96784aee2372017dd1fbca1efb28377519f49e08..513067f91fc8cf9fedb528c09310385a45cb350c 100644
+--- a/Telegram/SourceFiles/tele/tele_spoilers.h
++++ b/Telegram/SourceFiles/tele/tele_spoilers.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ class HistoryItem;
++class PeerData;
+ 
+ namespace Data {
+ class Media;
+@@ -20,7 +21,8 @@ class String;
+ namespace Tele {
+ 
+ void InvalidateAllPreviews();
+-void RevealTextSpoilers(Ui::Text::String &text);
++[[nodiscard]] bool RevealSpoilersIn(PeerData *peer);
++void RevealTextSpoilers(Ui::Text::String &text, PeerData *peer = nullptr);
+ void RevealElementSpoilers(
+ 	not_null<HistoryView::Element*> view,
+ 	Ui::Text::String &text);
