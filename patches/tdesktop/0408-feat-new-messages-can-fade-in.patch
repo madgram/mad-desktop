@@ -1,0 +1,296 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:25:40 +0200
+Subject: [PATCH] feat: new messages can fade in
+
+---
+ Telegram/CMakeLists.txt                       |  2 +
+ Telegram/Resources/langs/mad_ru.json          |  4 +-
+ .../SourceFiles/history/history_widget.cpp    |  2 +
+ .../history/view/history_view_list_widget.cpp |  2 +
+ .../SourceFiles/settings/settings_tele.cpp    |  4 +
+ .../tele/scripting/tele_script_local.cpp      |  4 +-
+ .../SourceFiles/tele/tele_incoming_fade.cpp   | 80 +++++++++++++++++++
+ .../SourceFiles/tele/tele_incoming_fade.h     | 10 +++
+ Telegram/SourceFiles/tele/tele_options.cpp    | 13 +++
+ Telegram/SourceFiles/tele/tele_options.h      |  2 +
+ .../SourceFiles/tele/tele_settings_io.cpp     |  1 +
+ 11 files changed, 122 insertions(+), 2 deletions(-)
+ create mode 100644 Telegram/SourceFiles/tele/tele_incoming_fade.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_incoming_fade.h
+
+diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
+index 87eff72449173e8bb0985eb52220a58c760b3f89..cdc0ad145dedb3d52a8d9ed58a149d488b9341f2 100644
+--- a/Telegram/CMakeLists.txt
++++ b/Telegram/CMakeLists.txt
+@@ -2672,6 +2672,8 @@ PRIVATE
+     tele/tele_foreign_agent_ranges.h
+     tele/tele_jump_plan.cpp
+     tele/tele_jump_plan.h
++    tele/tele_incoming_fade.cpp
++    tele/tele_incoming_fade.h
+     tele/tele_mad_names.cpp
+     tele/tele_mad_names.h
+     tele/tele_snippets.cpp
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index de956403c3b574ecd1037c6a9aac1ab984d9ca70..c937bf196dd9c980238a2271a80f442124a8b7c1 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2159,5 +2159,7 @@
+   "Hide foreign agent labels": "Скрывать плашки иноагентов",
+   "Removes the foreign agent disclaimers, Ministry of Justice footnotes and 18+ marks from messages and chat previews. Copying and forwarding keep the original text.": "Убирает «НАСТОЯЩИЙ МАТЕРИАЛ… ИНОСТРАННЫМ АГЕНТОМ», сноски про Минюст и «18+» из сообщений и превью в списке чатов. При копировании и пересылке текст остаётся как был.",
+   "Smooth jumps in chats": "Плавные прыжки по чату",
+-  "Jumps to a reply, a pinned message or the bottom glide over up to three screens instead of one.": "Переход к ответу, закрепу или вниз чата плавно пролистывает до трёх экранов, а не один."
++  "Jumps to a reply, a pinned message or the bottom glide over up to three screens instead of one.": "Переход к ответу, закрепу или вниз чата плавно пролистывает до трёх экранов, а не один.",
++  "Fade in new messages": "Плавное появление новых сообщений",
++  "Incoming messages fade in while they slide up.": "Входящие сообщения проявляются, пока выезжают снизу."
+ }
+diff --git a/Telegram/SourceFiles/history/history_widget.cpp b/Telegram/SourceFiles/history/history_widget.cpp
+index 9b96a9c58f1d6a23751aa58101cd649211316021..4da3abe2fbd208cd89814c70517f263060a3a06b 100644
+--- a/Telegram/SourceFiles/history/history_widget.cpp
++++ b/Telegram/SourceFiles/history/history_widget.cpp
+@@ -209,6 +209,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "tele/tele_recover_forwarded.h"
+ #include "tele/tele_show_pinned.h"
+ #include "tele/tele_jump_plan.h"
++#include "tele/tele_incoming_fade.h"
+ #include "media/audio/media_audio.h"
+ #include "media/audio/media_audio_capture.h"
+ #include "media/player/media_player_instance.h"
+@@ -5006,6 +5007,7 @@ void HistoryWidget::newItemAdded(not_null<HistoryItem*> item) {
+ 	const auto streamed = item->history()->streamedDraftsIfExists();
+ 	if (!streamed || !streamed->hasFor(item)) {
+ 		_itemRevealPending.emplace(item);
++		Tele::StartIncomingFade(item);
+ 	}
+ }
+ 
+diff --git a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
+index b345e8dfa77eda85c4ab8479817c5769192d7208..af5971479bec7136c2bc5fa7ece7a01ab555ad07 100644
+--- a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
++++ b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
+@@ -108,6 +108,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "tele/scripting/tele_script_local.h"
+ #include "tele/tele_ignored.h"
+ #include "tele/tele_jump_plan.h"
++#include "tele/tele_incoming_fade.h"
+ #include "tele/tele_message_menu.h"
+ #include "tele/tele_options.h"
+ #include "tele/tele_deleted_reply.h"
+@@ -1038,6 +1039,7 @@ void ListWidget::refreshRows(const Data::MessagesSlice &old) {
+ 		if (!item->isSponsored()
+ 			&& (!streamed || !streamed->hasFor(item))) {
+ 			_itemRevealPending.emplace(*i);
++			Tele::StartIncomingFade(item);
+ 		}
+ 	}
+ 	updateAroundPositionFromNearest(nearestIndex);
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index 4aa4982f8d7adfd1c641fc0033b43e64ed43564a..09b08bee18c135161e48b009f3feaf34e66cf567 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -2844,6 +2844,10 @@ void FillInterface(SectionBuilder &builder) {
+ 		builder,
+ 		::Tele::kOptionSmoothJumps,
+ 		{ u"scroll"_q, u"jump"_q, u"reply"_q, u"animation"_q });
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionAnimateIncoming,
++		{ u"message"_q, u"fade"_q, u"animation"_q });
+ 	AddGroupDivider(builder);
+ 	AddGroupTitle(builder, u"Text"_q);
+ 	AddOptionToggle(builder, ::Tele::kOptionLowercase);
+diff --git a/Telegram/SourceFiles/tele/scripting/tele_script_local.cpp b/Telegram/SourceFiles/tele/scripting/tele_script_local.cpp
+index 493eb04a17f8db191f5e99f40ba44ebdaa957e92..ad48593a4f707a7e2c6cb434dfe195f7651a7b67 100644
+--- a/Telegram/SourceFiles/tele/scripting/tele_script_local.cpp
++++ b/Telegram/SourceFiles/tele/scripting/tele_script_local.cpp
+@@ -8,6 +8,7 @@
+ #include "main/main_session.h"
+ #include "tele/scripting/tele_script_messages.h"
+ #include "tele/scripting/tele_script_storage.h"
++#include "tele/tele_incoming_fade.h"
+ #include "ui/painter.h"
+ 
+ namespace Tele::Scripting {
+@@ -240,7 +241,8 @@ void DrawElement(
+ 		not_null<const HistoryView::Element*> view,
+ 		const Ui::ChatPaintContext &context) {
+ 	const auto opacity = LocalOpacity(view->data())
+-		* DecoratedOpacity(view->data());
++		* DecoratedOpacity(view->data())
++		* IncomingFadeOpacity(view->data());
+ 	if (opacity >= 1.) {
+ 		view->draw(p, context);
+ 		return;
+diff --git a/Telegram/SourceFiles/tele/tele_incoming_fade.cpp b/Telegram/SourceFiles/tele/tele_incoming_fade.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..e84a0941fd523e0dd0cd4aed7a50f6bee820e174
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_incoming_fade.cpp
+@@ -0,0 +1,80 @@
++#include "tele/tele_incoming_fade.h"
++
++#include "base/unixtime.h"
++#include "base/weak_ptr.h"
++#include "data/data_session.h"
++#include "history/history.h"
++#include "history/history_item.h"
++#include "main/main_session.h"
++#include "tele/tele_options.h"
++#include "ui/effects/animations.h"
++
++#include <unordered_map>
++
++namespace Tele {
++namespace {
++
++constexpr auto kDuration = crl::time(320);
++constexpr auto kFreshSeconds = 30;
++
++struct Fade {
++	Ui::Animations::Simple animation;
++};
++
++[[nodiscard]] std::unordered_map<const HistoryItem*, Fade> &Fades() {
++	static auto result = std::unordered_map<const HistoryItem*, Fade>();
++	return result;
++}
++
++void Sweep() {
++	auto &fades = Fades();
++	for (auto i = begin(fades); i != end(fades);) {
++		if (i->second.animation.animating()) {
++			++i;
++		} else {
++			i = fades.erase(i);
++		}
++	}
++}
++
++} // namespace
++
++void StartIncomingFade(not_null<HistoryItem*> item) {
++	if (!AnimateIncoming()
++		|| item->out()
++		|| item->isSponsored()
++		|| (base::unixtime::now() - item->date() > kFreshSeconds)) {
++		return;
++	}
++	Sweep();
++	auto &fade = Fades()[item.get()];
++	if (fade.animation.animating()) {
++		return;
++	}
++	const auto session = base::make_weak(&item->history()->session());
++	const auto id = item->fullId();
++	fade.animation.start([=] {
++		if (const auto strong = session.get()) {
++			if (const auto found = strong->data().message(id)) {
++				strong->data().requestItemRepaint(found);
++			}
++		}
++	}, 0., 1., kDuration, anim::easeOutCubic);
++}
++
++float64 IncomingFadeOpacity(not_null<const HistoryItem*> item) {
++	auto &fades = Fades();
++	if (fades.empty()) {
++		return 1.;
++	}
++	const auto i = fades.find(item.get());
++	if (i == end(fades)) {
++		return 1.;
++	} else if (!i->second.animation.animating()) {
++		fades.erase(i);
++		return 1.;
++	}
++	return i->second.animation.value(1.);
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_incoming_fade.h b/Telegram/SourceFiles/tele/tele_incoming_fade.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..cc1a5168c1dbbc9f3dd1d1909ba251519387cf31
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_incoming_fade.h
+@@ -0,0 +1,10 @@
++#pragma once
++
++class HistoryItem;
++
++namespace Tele {
++
++void StartIncomingFade(not_null<HistoryItem*> item);
++[[nodiscard]] float64 IncomingFadeOpacity(not_null<const HistoryItem*> item);
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index f5c967be53dd5aabacbbf00c115a047f4c201ef3..d11c2dd5fbb5abc803c7b56565293871c868b278 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -77,6 +77,7 @@ const char kOptionReduceMotionSaved[] = "tele-reduce-motion-saved";
+ const char kOptionListKeys[] = "tele-list-keys";
+ const char kOptionSmoothScroll[] = "tele-smooth-scroll";
+ const char kOptionSmoothJumps[] = "tele-smooth-jumps";
++const char kOptionAnimateIncoming[] = "tele-animate-incoming";
+ const char kOptionSmoothTyping[] = "tele-smooth-typing";
+ const char kOptionSmoothTypingSpeed[] = "tele-smooth-typing-speed";
+ const char kOptionScrollStats[] = "tele-scroll-stats";
+@@ -728,6 +729,12 @@ base::options::toggle SmoothJumpsOption({
+ 		"over up to three screens instead of one.",
+ });
+ 
++base::options::toggle AnimateIncomingOption({
++	.id = kOptionAnimateIncoming,
++	.name = "Fade in new messages",
++	.description = "Incoming messages fade in while they slide up.",
++});
++
+ base::options::toggle SmoothScrollOption({
+ 	.id = kOptionSmoothScroll,
+ 	.name = "Smooth wheel scrolling",
+@@ -2630,6 +2637,12 @@ bool ReduceMotion() {
+ 	return ReduceMotionOption.value();
+ }
+ 
++bool AnimateIncoming() {
++	return AnimateIncomingOption.value()
++		&& !ReduceMotionOption.value()
++		&& !anim::Disabled();
++}
++
+ bool SmoothJumps() {
+ 	return SmoothJumpsOption.value()
+ 		&& !ReduceMotionOption.value()
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index 7245934b4673db31d0351bb549e38b04b21e3c0f..120c8763e6228cf49b10149793dd6cfaaab36648 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -65,6 +65,7 @@ extern const char kOptionHideListPreviews[];
+ extern const char kOptionChatListNoReorderAnimation[];
+ extern const char kOptionReduceMotion[];
+ extern const char kOptionSmoothJumps[];
++extern const char kOptionAnimateIncoming[];
+ extern const char kOptionReduceMotionSaved[];
+ extern const char kOptionListKeys[];
+ extern const char kOptionSmoothScroll[];
+@@ -393,6 +394,7 @@ void SetLinkPreviews(const QString &value);
+ [[nodiscard]] bool ChatListNoReorderAnimation();
+ [[nodiscard]] bool ReduceMotion();
+ [[nodiscard]] bool SmoothJumps();
++[[nodiscard]] bool AnimateIncoming();
+ [[nodiscard]] rpl::producer<> ReduceMotionChanges();
+ [[nodiscard]] QString ReduceMotionSaved();
+ void SetReduceMotionSaved(const QString &value);
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index 27c78b35c969df91fac8fd5afede2f56c21189b0..aa828cef3acfa010a16da7ca81fda29d897edc5c 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -294,6 +294,7 @@ struct Spec {
+ 		Toggle(kOptionHideGiftButton),
+ 		Toggle(kOptionHideRecordButton),
+ 		Toggle(kOptionSmoothJumps),
++		Toggle(kOptionAnimateIncoming),
+ 		Toggle(kOptionHideForeignAgent),
+ 		Toggle(kOptionHideBirthdays),
+ 		Toggle(kOptionSilentByDefault),

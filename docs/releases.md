@@ -2,7 +2,7 @@
 
 every tele patch, grouped by the release that brought it, newest first. [features](features.md) has the same rows grouped by settings page. release notes and the in-app what's new are made from these rows, so their format is strict: see [the patch row](development.md#the-patch-row).
 
-all 418 patches, newest release first.
+all 419 patches, newest release first.
 
 ### [mad dev](mad.md)
 
@@ -80,6 +80,7 @@ all 418 patches, newest release first.
 | [405](../patches/tdesktop/0405-feat-hide-foreign-agent-labels.patch) | hides foreign agent disclaimers, ministry of justice footnotes and 18+ marks in messages and chat previews, like mad for ios; copying and forwarding keep the original text | settings → mad → chats, off |
 | [406](../patches/tdesktop/0406-feat-mad-settings-show-what-each-option-does-right-u.patch) | mad settings show what each option does in a gray line right under it instead of behind a question mark | settings → mad |
 | [407](../patches/tdesktop/0407-feat-smooth-jumps-in-chats.patch) | jumps to a reply, a pinned message or the bottom of a chat glide over up to three screens and take longer the farther they go | settings → mad → interface, off |
+| [408](../patches/tdesktop/0408-feat-new-messages-can-fade-in.patch) | incoming messages fade in while they slide up | settings → mad → interface, off |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1009](../patches/Telegram/lib_rpl/0001-fix-topic-tabs-no-longer-crash-after-you-move-them.patch) | topic and direct message tabs no longer crash after you move them to the top, bottom or side and then scroll them. the cause was in the library that passes events around, so anything else that lost updates the same way is fixed too | always on |
 | [1010](../patches/Telegram/ThirdParty/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs/0001-fix-refuse-await-using-outside-async-functions.patch) | closes the quickjs hole that let a bot's message widget run any program on your pc: the engine gets telegram's own `await using` fix from widget-sandbox 0.6.4, which telegram desktop 7.4.2 ships without | always on |
