@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:32:10 +0200
+Subject: [PATCH] feat: group the bot options in mad settings
+
+---
+ Telegram/Resources/langs/mad_ru.json            | 6 +++++-
+ Telegram/SourceFiles/settings/settings_tele.cpp | 7 +++++++
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 94845ee1a5d18773177b96db9c3c8abd9d059824..8e75c275554235d9b012a66a7c7e9311cbbaa6ee 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2222,5 +2222,9 @@
+   "IDs in profiles are shown and copied without spaces.": "ID в профилях показываются и копируются без пробелов.",
+   "The ID and the data center are shown in one row.": "ID и дата-центр показываются одной строкой.",
+   "The chat list shows typing even for people who hide their last seen.": "Список чатов показывает «печатает» даже у тех, кто скрыл время посещения.",
+-  "A right click next to a message, not only on it, opens its menu.": "Правый клик рядом с сообщением, а не только по нему, открывает его меню."
++  "A right click next to a message, not only on it, opens its menu.": "Правый клик рядом с сообщением, а не только по нему, открывает его меню.",
++  "Buttons": "Кнопки",
++  "Inline bots": "Инлайн-боты",
++  "Bot chats": "Чаты с ботами",
++  "Mini apps": "Мини-приложения"
+ }
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index c401a174d0e923b341a9fd5848f8dde66fed6853..b50373318692a3b81508b564d8d725e7a6c5cd7d 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -4051,16 +4051,21 @@ void FillProfiles(SectionBuilder &builder) {
+ 
+ void FillBots(SectionBuilder &builder) {
+ 	AddSkip(builder);
++	AddGroupTitle(builder, u"Buttons"_q);
+ 	AddOptionToggle(builder, ::Tele::kOptionButtonPayloads);
+ 	AddOptionToggle(
+ 		builder,
+ 		::Tele::kOptionCopyButtonData,
+ 		{ u"callback"_q, u"clipboard"_q });
++	AddGroupDivider(builder);
++	AddGroupTitle(builder, u"Inline bots"_q);
+ 	AddOptionToggle(builder, ::Tele::kOptionInlineWithoutVia);
+ 	AddOptionToggle(
+ 		builder,
+ 		::Tele::kOptionInlineAsText,
+ 		{ u"inline bot"_q });
++	AddGroupDivider(builder);
++	AddGroupTitle(builder, u"Bot chats"_q);
+ 	AddOptionToggle(
+ 		builder,
+ 		::Tele::kOptionStartParam,
+@@ -4069,6 +4074,8 @@ void FillBots(SectionBuilder &builder) {
+ 		builder,
+ 		::Tele::kOptionHideBotEdited,
+ 		{ u"edited"_q, u"bot"_q });
++	AddGroupDivider(builder);
++	AddGroupTitle(builder, u"Mini apps"_q);
+ 	AddOptionToggle(
+ 		builder,
+ 		::Tele::kOptionTrustedAppLinks,
