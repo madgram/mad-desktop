@@ -14,9 +14,9 @@ Subject: [PATCH] fix: one start menu shortcut that opens the single-file
  Telegram/SourceFiles/tele/tele_app_icons.h    |  1 +
  .../SourceFiles/tele/tele_single_paths.cpp    | 38 +++++++++++++++++++
  Telegram/SourceFiles/tele/tele_single_paths.h | 10 +++++
- .../tele/tests/mad_logic_tests.cpp            | 32 ++++++++++++++++
+ .../tele/tests/mad_logic_tests.cpp            | 31 +++++++++++++++
  Telegram/cmake/mad_tests.cmake                | 13 +++++++
- 11 files changed, 131 insertions(+), 1 deletion(-)
+ 11 files changed, 130 insertions(+), 1 deletion(-)
  create mode 100644 Telegram/SourceFiles/tele/tele_single_paths.cpp
  create mode 100644 Telegram/SourceFiles/tele/tele_single_paths.h
  create mode 100644 Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
@@ -217,10 +217,10 @@ index 0000000000000000000000000000000000000000..0c3b9b0a0c9633905034eef3c2a79b4e
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..de97cea3a2627e1e0775648c765b34cafd7ebb9d
+index 0000000000000000000000000000000000000000..4de23af1dd081a07a1bed9183bb9fb37f88d0930
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,31 @@
 +#include "tele/tele_single_paths.h"
 +
 +#include <cstdio>
@@ -230,8 +230,7 @@ index 0000000000000000000000000000000000000000..de97cea3a2627e1e0775648c765b34ca
 +
 +void Require(bool ok, const char *name) {
 +	if (!ok) {
-+		std::fprintf(stderr, "failed: %s
-+", name);
++		std::fprintf(stderr, "failed: %s\n", name);
 +		std::exit(1);
 +	}
 +}
@@ -240,7 +239,7 @@ index 0000000000000000000000000000000000000000..de97cea3a2627e1e0775648c765b34ca
 +	using Tele::SingleFileProfileCandidate;
 +	Require(SingleFileProfileCandidate(QStringLiteral("C:/Users/u/AppData/Local/mad-single/app/abc123/"))
 +		== QStringLiteral("C:/Users/u/AppData/Local/mad-single/profile/"), "single build dir");
-+	Require(SingleFileProfileCandidate(QStringLiteral("C:\Users\u\AppData\Local\MAD-SINGLE\App\abc123"))
++	Require(SingleFileProfileCandidate(QStringLiteral("C:\\Users\\u\\AppData\\Local\\MAD-SINGLE\\App\\abc123"))
 +		== QStringLiteral("C:/Users/u/AppData/Local/MAD-SINGLE/profile/"), "native separators and case");
 +	Require(SingleFileProfileCandidate(QStringLiteral("C:/Users/u/AppData/Local/Programs/mad/")).isEmpty(), "installed exe");
 +	Require(SingleFileProfileCandidate(QStringLiteral("C:/mad-single/app/")).isEmpty(), "no build folder");
