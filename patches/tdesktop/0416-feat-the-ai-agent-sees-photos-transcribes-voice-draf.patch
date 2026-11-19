@@ -5,37 +5,31 @@ Subject: [PATCH] feat: the ai agent sees photos, transcribes voice, drafts,
  forwards and searches the web with any provider
 
 ---
- Telegram/Resources/langs/mad_ru.json          |  15 +-
- .../SourceFiles/settings/settings_tele.cpp    |   1 +
+ Telegram/Resources/langs/mad_ru.json          |  16 +-
+ .../SourceFiles/settings/settings_tele.cpp    |   6 +
  .../SourceFiles/tele/agent/agent_runner.cpp   |  13 +-
- .../SourceFiles/tele/agent/agent_store.cpp    |  11 +
- Telegram/SourceFiles/tele/agent/agent_store.h |   1 +
- .../SourceFiles/tele/agent/agent_tools.cpp    | 791 +++++++++++++++++-
+ .../SourceFiles/tele/agent/agent_store.cpp    |  15 +
+ Telegram/SourceFiles/tele/agent/agent_store.h |   2 +
+ .../SourceFiles/tele/agent/agent_tools.cpp    | 794 +++++++++++++++++-
  Telegram/SourceFiles/tele/agent/agent_tools.h |  24 +
- Telegram/SourceFiles/tele/tele_options.cpp    |  10 +-
- Telegram/SourceFiles/tele/tele_options.h      |   1 +
- .../SourceFiles/tele/tele_settings_io.cpp     |   1 +
- 10 files changed, 859 insertions(+), 9 deletions(-)
+ Telegram/SourceFiles/tele/tele_options.cpp    |  15 +
+ Telegram/SourceFiles/tele/tele_options.h      |   2 +
+ .../SourceFiles/tele/tele_settings_io.cpp     |   2 +
+ 10 files changed, 882 insertions(+), 7 deletions(-)
 
 diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
-index 5c6cfca9771ca57a9607a54f1be43f778fbce757..8f905e1db709be00bb792d02d4abe6eb058255f9 100644
+index afaa3ccd6f1011b8b1efafb5cccdeeabdbd4957a..9cd17812997d6f62e3bed4753d8357624d59c32e 100644
 --- a/Telegram/Resources/langs/mad_ru.json
 +++ b/Telegram/Resources/langs/mad_ru.json
-@@ -2252,7 +2252,6 @@
-   "Add an API key in the agent settings.": "Добавь API-ключ в настройках агента.",
-   "Agent": "Агент",
-   "Agent settings": "Настройки агента",
--  "Anthropic's agent can search the web and read pages.": "Агент на Anthropic может искать в интернете и читать страницы.",
-   "Ask about your chats, ask to retell a conversation, reply to someone or set a reminder. The agent uses your own API key from the settings.": "Спроси про свои чаты, попроси пересказать переписку, ответить кому-то или напомнить о чём-то. Агент работает на твоём API-ключе из настроек.",
-   "Ask the agent…": "Спроси агента…",
-   "Cancelled by the user.": "Отменено пользователем.",
-@@ -2317,5 +2316,17 @@
+@@ -2318,5 +2318,19 @@
    "Archived %1": "Убрал %1 в архив",
    "Unarchived %1": "Вернул %1 из архива",
    "Pinned %1": "Закрепил %1",
 -  "Unpinned %1": "Открепил %1"
 +  "Unpinned %1": "Открепил %1",
 +  "Looked at the photo": "Посмотрел фото",
++  "Web search with other providers": "Поиск в интернете с другими провайдерами",
++  "Searches and pages go from your computer through DuckDuckGo.": "Поиск и страницы идут с твоего компьютера через DuckDuckGo.",
 +  "Transcribed a voice message": "Расшифровал голосовое",
 +  "Drafted a reply in %1": "Оставил черновик в %1",
 +  "Forwarded to %1": "Переслал в %1",
@@ -49,10 +43,19 @@ index 5c6cfca9771ca57a9607a54f1be43f778fbce757..8f905e1db709be00bb792d02d4abe6eb
 +  "With providers other than Anthropic, searches go to DuckDuckGo from your computer.": "С провайдерами кроме Anthropic поиск идёт через DuckDuckGo с вашего компьютера."
  }
 diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
-index 6e9811ba7c2998c1db391b1960ccdbafa8fa3df2..89ffe49ff45c82bbd1029e2cef31dec6acabade1 100644
+index 6e9811ba7c2998c1db391b1960ccdbafa8fa3df2..a3903a66f417a9fdd583f1328a2ae101da280366 100644
 --- a/Telegram/SourceFiles/settings/settings_tele.cpp
 +++ b/Telegram/SourceFiles/settings/settings_tele.cpp
-@@ -4654,6 +4654,7 @@ void FillAgent(SectionBuilder &builder) {
+@@ -4650,10 +4650,16 @@ void FillAgent(SectionBuilder &builder) {
+ 		{ u"ai"_q, u"confirm"_q },
+ 		::Tele::kOptionAgentSend);
+ 	AddOptionToggle(builder, ::Tele::kOptionAgentWebSearch, { u"ai"_q });
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionAgentLocalWeb,
++		{ u"ai"_q, u"duckduckgo"_q, u"openai"_q },
++		::Tele::kOptionAgentWebSearch);
+ 	AddOptionToggle(
  		builder,
  		::Tele::kOptionAgentChatActions,
  		{ u"ai"_q, u"mute"_q, u"archive"_q, u"pin"_q });
@@ -61,10 +64,10 @@ index 6e9811ba7c2998c1db391b1960ccdbafa8fa3df2..89ffe49ff45c82bbd1029e2cef31dec6
  }
  
 diff --git a/Telegram/SourceFiles/tele/agent/agent_runner.cpp b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
-index 26c308102154d7d14354d306285ce26bc3b896ec..9bfce6d26a715663a02a878c8038f6963150fccc 100644
+index 4ad30581335de5a5bc9d6b161c8f8599c93de23b..d341398f57f75677339f66a060ca32c8d9041a36 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_runner.cpp
 +++ b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
-@@ -63,6 +63,14 @@ constexpr auto kMaxErrorBody = 16 * 1024;
+@@ -64,6 +64,14 @@ constexpr auto kMaxErrorBody = 16 * 1024;
  		return Tr(u"Looking through the chats…"_q);
  	} else if (name == u"search_messages"_q) {
  		return Tr(u"Searching messages…"_q);
@@ -79,7 +82,7 @@ index 26c308102154d7d14354d306285ce26bc3b896ec..9bfce6d26a715663a02a878c8038f696
  	}
  	return Tr(u"Working…"_q);
  }
-@@ -428,6 +436,7 @@ void Runner::runTools(std::vector<ToolCall> calls, int index) {
+@@ -436,6 +444,7 @@ void Runner::runTools(std::vector<ToolCall> calls, int index) {
  		message.toolCallId = call.id;
  		message.toolTitle = outcome.title;
  		message.isError = outcome.isError;
@@ -87,7 +90,7 @@ index 26c308102154d7d14354d306285ce26bc3b896ec..9bfce6d26a715663a02a878c8038f696
  		_messages.push_back(std::move(message));
  		persist();
  		notify();
-@@ -450,9 +459,7 @@ void Runner::finish(const QString &error) {
+@@ -458,9 +467,7 @@ void Runner::finish(const QString &error) {
  
  void Runner::persist() {
  	_store->setMessages(_messages);
@@ -99,7 +102,7 @@ index 26c308102154d7d14354d306285ce26bc3b896ec..9bfce6d26a715663a02a878c8038f696
  
  void Runner::notify() {
 diff --git a/Telegram/SourceFiles/tele/agent/agent_store.cpp b/Telegram/SourceFiles/tele/agent/agent_store.cpp
-index 83225de06c3436d85f09b069f61d5b9dbccfcb97..edd5b602b5ff83e2ba3437bc1e956f64a0e98541 100644
+index 83225de06c3436d85f09b069f61d5b9dbccfcb97..4850ab0c24757acdf5dca39913568b4433bf8519 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_store.cpp
 +++ b/Telegram/SourceFiles/tele/agent/agent_store.cpp
 @@ -19,6 +19,7 @@ constexpr auto kMagic = quint32(0x6d616461);
@@ -123,7 +126,15 @@ index 83225de06c3436d85f09b069f61d5b9dbccfcb97..edd5b602b5ff83e2ba3437bc1e956f64
  	_messages = std::move(messages);
  	write();
  }
-@@ -177,4 +184,8 @@ bool AllowChatActions() {
+@@ -173,8 +180,16 @@ bool AllowWebSearch() {
+ 	return OptionOn(kOptionAgentWebSearch);
+ }
+ 
++bool AllowLocalWeb() {
++	return OptionOn(kOptionAgentLocalWeb);
++}
++
+ bool AllowChatActions() {
  	return OptionOn(kOptionAgentChatActions);
  }
  
@@ -133,22 +144,24 @@ index 83225de06c3436d85f09b069f61d5b9dbccfcb97..edd5b602b5ff83e2ba3437bc1e956f64
 +
  } // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_store.h b/Telegram/SourceFiles/tele/agent/agent_store.h
-index fac7bc9099a0c31bb15c47d432c7f2a94f954aa7..15b809f717dd5b73e3b221681c54c0b1284899d6 100644
+index fac7bc9099a0c31bb15c47d432c7f2a94f954aa7..4514803b4d7ff66757b0b4c09ce1c9ca7d1eb086 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_store.h
 +++ b/Telegram/SourceFiles/tele/agent/agent_store.h
-@@ -39,5 +39,6 @@ private:
+@@ -38,6 +38,8 @@ private:
+ [[nodiscard]] bool AllowSendMessages();
  [[nodiscard]] bool SendWithoutConfirmation();
  [[nodiscard]] bool AllowWebSearch();
++[[nodiscard]] bool AllowLocalWeb();
  [[nodiscard]] bool AllowChatActions();
 +[[nodiscard]] bool AllowForward();
  
  } // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.cpp b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
-index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a57a054d6 100644
+index 07124d6eaa1e1f5065ca0c4de0cddd5f96f29ffe..cc2a3ef0af10772c6c20e2a1da0a4344e4cd29be 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_tools.cpp
 +++ b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
-@@ -1,9 +1,17 @@
- #include "tele/agent/agent_tools.h"
+@@ -2,9 +2,18 @@
+ #include "tele/agent/agent_markdown.h"
  
  #include "api/api_common.h"
 +#include "api/api_transcribes.h"
@@ -158,6 +171,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
 +#include "core/application.h"
 +#include "data/data_document.h"
 +#include "data/data_drafts.h"
++#include "data/data_file_origin.h"
 +#include "data/data_media_types.h"
  #include "data/data_peer.h"
 +#include "data/data_photo.h"
@@ -165,7 +179,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
  #include "data/data_histories.h"
  #include "data/data_session.h"
  #include "data/data_types.h"
-@@ -17,17 +25,42 @@
+@@ -18,17 +27,42 @@
  #include "history/history_item.h"
  #include "main/main_session.h"
  #include "tele/agent/agent_store.h"
@@ -208,7 +222,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
  
  [[nodiscard]] QJsonObject Property(
  		const QString &type,
-@@ -92,11 +125,47 @@ constexpr auto kMaxReadLimit = 100;
+@@ -93,11 +127,47 @@ constexpr auto kMaxReadLimit = 100;
  	return base::unixtime::parse(date).toString(u"yyyy-MM-dd HH:mm"_q);
  }
  
@@ -257,7 +271,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
  	return text.isEmpty() ? u"[media]"_q : text;
  }
  
-@@ -164,6 +233,202 @@ constexpr auto kMaxReadLimit = 100;
+@@ -161,6 +231,204 @@ constexpr auto kMaxReadLimit = 100;
  	return { .content = text, .isError = true };
  }
  
@@ -312,7 +326,9 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
 +}
 +
 +[[nodiscard]] bool LocalWeb() {
-+	return AllowWebSearch() && (CurrentProvider() != Provider::Anthropic);
++	return AllowWebSearch()
++		&& AllowLocalWeb()
++		&& (CurrentProvider() != Provider::Anthropic);
 +}
 +
 +[[nodiscard]] QString DecodeEntities(const QString &text) {
@@ -460,7 +476,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
  } // namespace
  
  std::vector<ToolSpec> ToolSpecs() {
-@@ -212,6 +477,26 @@ std::vector<ToolSpec> ToolSpecs() {
+@@ -209,6 +477,26 @@ std::vector<ToolSpec> ToolSpecs() {
  					u"How many latest messages to read, 1-100. Default 60."_q) },
  			}, { u"chat_id"_q }),
  		});
@@ -487,7 +503,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
  		result.push_back({
  			u"search_messages"_q,
  			u"Search messages by text across all of the user's chats, or "
-@@ -259,6 +544,52 @@ std::vector<ToolSpec> ToolSpecs() {
+@@ -256,6 +544,52 @@ std::vector<ToolSpec> ToolSpecs() {
  					u"Send this many minutes from now."_q) },
  			}, { u"chat_id"_q, u"text"_q }),
  		});
@@ -540,7 +556,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
  	}
  	if (AllowChatActions()) {
  		result.push_back({
-@@ -393,9 +724,18 @@ QString SystemPrompt(const QString &accountName) {
+@@ -390,9 +724,20 @@ QString SystemPrompt(const QString &accountName) {
  				"sent. Send only what they asked for and don't repeat a send "
  				"they declined."_q);
  	}
@@ -556,12 +572,14 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
  	lines.push_back(u"Format answers with simple Markdown: **bold**, "
 -		"*italic*, `code`, lists with \"- \". In messages you send to chats "
 -		"the same markup becomes real Telegram formatting."_q);
-+		"*italic*, `code`, lists with \"- \". In messages you send or draft "
++		"__italic__, ~~strikethrough~~, ||spoiler||, `code`, code blocks "
++		"with ``` on their own lines before and after the code, "
++		"[text](link), lists with \"- \". In messages you send or draft "
 +		"in chats the same markup becomes real Telegram formatting."_q);
  	return lines.join('\n');
  }
  
-@@ -403,6 +743,8 @@ Tools::Tools(not_null<Main::Session*> session)
+@@ -400,6 +745,8 @@ Tools::Tools(not_null<Main::Session*> session)
  : _session(session) {
  }
  
@@ -570,7 +588,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
  void Tools::execute(
  		const ToolCall &call,
  		Confirm confirm,
-@@ -425,6 +767,18 @@ void Tools::execute(
+@@ -422,6 +769,18 @@ void Tools::execute(
  		sendMessage(args, true, std::move(confirm), std::move(done));
  	} else if (name == u"remind"_q) {
  		remind(args, std::move(done));
@@ -589,7 +607,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
  	} else if (AllowChatActions()
  		&& ((name == u"mark_read"_q)
  			|| (name == u"mark_unread"_q)
-@@ -826,4 +1180,435 @@ void Tools::chatAction(
+@@ -823,4 +1182,433 @@ void Tools::chatAction(
  	}
  }
  
@@ -741,9 +759,7 @@ index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..7dee82139910de15b5276afb8b09336a
 +	}
 +	const auto text = args.value(u"text"_q).toString();
 +	Core::App().materializeLocalDrafts();
-+	Data::SetChatLinkDraft(
-+		peer,
-+		TextUtilities::ParseEntities(text, TextParseMarkdown));
++	Data::SetChatLinkDraft(peer, MarkdownToEntities(text));
 +	const auto title = Title(peer);
 +	done({
 +		.content = u"The draft is in the input field of \"%1\". The user "
@@ -1091,28 +1107,34 @@ index 87330655830f9d3b8fb9b0560808c205cd0412dc..5744a57b79c6ac36e4b789195b33d8b9
  };
  
 diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
-index 9c2f8126d1b3f9939083429840185cd0d773d88b..f1d402f4be6233889928f75e9b5288efe5760554 100644
+index 9c2f8126d1b3f9939083429840185cd0d773d88b..e158cddd25961008becea4b801c4f7c1614537c4 100644
 --- a/Telegram/SourceFiles/tele/tele_options.cpp
 +++ b/Telegram/SourceFiles/tele/tele_options.cpp
-@@ -23,6 +23,7 @@ const char kOptionAgentSend[] = "tele-agent-send";
+@@ -22,7 +22,9 @@ const char kOptionAgentReadChats[] = "tele-agent-read-chats";
+ const char kOptionAgentSend[] = "tele-agent-send";
  const char kOptionAgentSendUnconfirmed[] = "tele-agent-send-unconfirmed";
  const char kOptionAgentWebSearch[] = "tele-agent-web-search";
++const char kOptionAgentLocalWeb[] = "tele-agent-local-web";
  const char kOptionAgentChatActions[] = "tele-agent-chat-actions";
 +const char kOptionAgentForward[] = "tele-agent-forward";
  
  
  const char kOptionHideStories[] = "tele-hide-stories";
-@@ -850,7 +851,8 @@ base::options::toggle AgentSendUnconfirmedOption({
- base::options::toggle AgentWebSearchOption({
- 	.id = kOptionAgentWebSearch,
- 	.name = "Web search",
--	.description = "Anthropic's agent can search the web and read pages.",
-+	.description = "With providers other than Anthropic, searches go to "
-+		"DuckDuckGo from your computer.",
+@@ -854,6 +856,13 @@ base::options::toggle AgentWebSearchOption({
  	.defaultValue = true,
  });
  
-@@ -861,6 +863,12 @@ base::options::toggle AgentChatActionsOption({
++base::options::toggle AgentLocalWebOption({
++	.id = kOptionAgentLocalWeb,
++	.name = "Web search with other providers",
++	.description = "Searches and pages go from your computer through "
++		"DuckDuckGo.",
++});
++
+ base::options::toggle AgentChatActionsOption({
+ 	.id = kOptionAgentChatActions,
+ 	.name = "Manage chats",
+@@ -861,6 +870,12 @@ base::options::toggle AgentChatActionsOption({
  		"archive and pin them when you ask.",
  });
  
@@ -1126,24 +1148,28 @@ index 9c2f8126d1b3f9939083429840185cd0d773d88b..f1d402f4be6233889928f75e9b5288ef
  	.id = kOptionSmoothScroll,
  	.name = "Smooth wheel scrolling",
 diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
-index e8aeea3e1ed04c93a5ea683bc6ce41781df31f00..772c77a697c54c91a1aa9338f31bf47df22f89b1 100644
+index e8aeea3e1ed04c93a5ea683bc6ce41781df31f00..dd163fe359487b8b38e9bd5145d910fd7881e0c2 100644
 --- a/Telegram/SourceFiles/tele/tele_options.h
 +++ b/Telegram/SourceFiles/tele/tele_options.h
-@@ -19,6 +19,7 @@ extern const char kOptionAgentSend[];
+@@ -18,7 +18,9 @@ extern const char kOptionAgentReadChats[];
+ extern const char kOptionAgentSend[];
  extern const char kOptionAgentSendUnconfirmed[];
  extern const char kOptionAgentWebSearch[];
++extern const char kOptionAgentLocalWeb[];
  extern const char kOptionAgentChatActions[];
 +extern const char kOptionAgentForward[];
  [[nodiscard]] bool MadBadgesEnabled();
  
  extern const char kOptionHideStories[];
 diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
-index b1dc8cdaabfa2da32fcaa1c77664504a8e2eab41..27f8efbc896362e0cdd94a4ee02d6d777f09cd51 100644
+index b1dc8cdaabfa2da32fcaa1c77664504a8e2eab41..f62a257024f52245dc5d4b8588b9aaa6e55f1b71 100644
 --- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
 +++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
-@@ -304,6 +304,7 @@ struct Spec {
+@@ -303,7 +303,9 @@ struct Spec {
+ 		Toggle(kOptionAgentSend),
  		Toggle(kOptionAgentSendUnconfirmed),
  		Toggle(kOptionAgentWebSearch),
++		Toggle(kOptionAgentLocalWeb),
  		Toggle(kOptionAgentChatActions),
 +		Toggle(kOptionAgentForward),
  		Toggle(kOptionHideForeignAgent),

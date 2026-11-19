@@ -11,10 +11,10 @@ Subject: [PATCH] feat: the ai agent reads a chat by period and shows search
  3 files changed, 426 insertions(+), 64 deletions(-)
 
 diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
-index 8f905e1db709be00bb792d02d4abe6eb058255f9..f88dda5149f9259ffd04d727eb0d618bf0331d03 100644
+index 9cd17812997d6f62e3bed4753d8357624d59c32e..1d16c01bdcec5e194e9085b793710d55feba6f1a 100644
 --- a/Telegram/Resources/langs/mad_ru.json
 +++ b/Telegram/Resources/langs/mad_ru.json
-@@ -2328,5 +2328,6 @@
+@@ -2332,5 +2332,6 @@
    "Forwarding…": "Пересылаю…",
    "Forward messages": "Пересылать сообщения",
    "Forwards go at once, without a confirmation card.": "Пересылает сразу, без карточки подтверждения.",
@@ -23,10 +23,10 @@ index 8f905e1db709be00bb792d02d4abe6eb058255f9..f88dda5149f9259ffd04d727eb0d618b
 +  "Scrolled through %1": "Пролистал %1"
  }
 diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.cpp b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
-index 7dee82139910de15b5276afb8b09336a57a054d6..334d84eaf9e9fc056497257e5ef571ffdcf9e8fe 100644
+index cc2a3ef0af10772c6c20e2a1da0a4344e4cd29be..251802cf0dc1e725a1349656d706d438abc8de0f 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_tools.cpp
 +++ b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
-@@ -44,7 +44,19 @@ namespace Tele::Agent {
+@@ -46,7 +46,19 @@ namespace Tele::Agent {
  namespace {
  
  constexpr auto kMaxItemText = 1500;
@@ -47,7 +47,7 @@ index 7dee82139910de15b5276afb8b09336a57a054d6..334d84eaf9e9fc056497257e5ef571ff
  constexpr auto kPhotoSide = 1280;
  constexpr auto kPhotoQuality = 75;
  constexpr auto kPhotoTimeout = crl::time(25000);
-@@ -155,13 +167,15 @@ struct PhotoWait {
+@@ -157,13 +169,15 @@ struct PhotoWait {
  		: (u"["_q + kind + u" "_q + name + u"]"_q);
  }
  
@@ -66,7 +66,7 @@ index 7dee82139910de15b5276afb8b09336a57a054d6..334d84eaf9e9fc056497257e5ef571ff
  	}
  	if (!tag.isEmpty()) {
  		return text.isEmpty() ? tag : (tag + u" "_q + text);
-@@ -169,7 +183,9 @@ struct PhotoWait {
+@@ -171,7 +185,9 @@ struct PhotoWait {
  	return text.isEmpty() ? u"[media]"_q : text;
  }
  
@@ -77,7 +77,7 @@ index 7dee82139910de15b5276afb8b09336a57a054d6..334d84eaf9e9fc056497257e5ef571ff
  	const auto from = item->from();
  	const auto author = item->out()
  		? u"me"_q
-@@ -180,7 +196,7 @@ struct PhotoWait {
+@@ -182,7 +198,7 @@ struct PhotoWait {
  		QString::number(item->id.bare),
  		DateText(item->date()),
  		author,
@@ -86,7 +86,7 @@ index 7dee82139910de15b5276afb8b09336a57a054d6..334d84eaf9e9fc056497257e5ef571ff
  }
  
  [[nodiscard]] std::vector<not_null<HistoryItem*>> Items(
-@@ -221,6 +237,17 @@ struct PhotoWait {
+@@ -223,6 +239,17 @@ struct PhotoWait {
  	return parsed.isValid() ? TimeId(parsed.toSecsSinceEpoch()) : 0;
  }
  
@@ -102,8 +102,8 @@ index 7dee82139910de15b5276afb8b09336a57a054d6..334d84eaf9e9fc056497257e5ef571ff
 +}
 +
  [[nodiscard]] TextWithTags MessageText(const QString &text) {
- 	auto parsed = TextUtilities::ParseEntities(text, TextParseMarkdown);
- 	return TextWithTags{
+ 	return MarkdownToTags(text);
+ }
 @@ -465,16 +492,24 @@ std::vector<ToolSpec> ToolSpecs() {
  	if (read) {
  		result.push_back({
@@ -143,7 +143,7 @@ index 7dee82139910de15b5276afb8b09336a57a054d6..334d84eaf9e9fc056497257e5ef571ff
  			Schema(QJsonObject{
  				{ u"query"_q, Property(u"string"_q, u"Words to search for."_q) },
  				{ u"chat_id"_q, Property(
-@@ -879,44 +915,371 @@ void Tools::readChat(const QJsonObject &args, Fn<void(ToolOutcome)> done) {
+@@ -881,44 +917,371 @@ void Tools::readChat(const QJsonObject &args, Fn<void(ToolOutcome)> done) {
  		done(Error(u"Unknown chat_id."_q));
  		return;
  	}
@@ -533,7 +533,7 @@ index 7dee82139910de15b5276afb8b09336a57a054d6..334d84eaf9e9fc056497257e5ef571ff
  	}).fail([=](const MTP::Error &error) {
  		if (weak) {
  			done(Error(error.type()));
-@@ -940,6 +1303,10 @@ void Tools::searchMessages(
+@@ -942,6 +1305,10 @@ void Tools::searchMessages(
  		done(Error(u"Unknown chat_id."_q));
  		return;
  	}
@@ -544,7 +544,7 @@ index 7dee82139910de15b5276afb8b09336a57a054d6..334d84eaf9e9fc056497257e5ef571ff
  	const auto weak = base::make_weak(this);
  	const auto session = _session;
  	const auto finish = [=](const MTPmessages_Messages &result) {
-@@ -966,40 +1333,19 @@ void Tools::searchMessages(
+@@ -968,40 +1335,19 @@ void Tools::searchMessages(
  			done(Error(error.type()));
  		}
  	};

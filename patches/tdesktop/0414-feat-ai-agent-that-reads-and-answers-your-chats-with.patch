@@ -5,18 +5,20 @@ Subject: [PATCH] feat: ai agent that reads and answers your chats with your
  own key
 
 ---
- Telegram/CMakeLists.txt                       |  10 +
- Telegram/Resources/langs/mad_ru.json          |  66 +-
+ Telegram/CMakeLists.txt                       |  12 +
+ Telegram/Resources/langs/mad_ru.json          |  67 +-
  .../SourceFiles/settings/settings_tele.cpp    | 122 +++
- .../SourceFiles/tele/agent/agent_panel.cpp    | 497 ++++++++++
+ .../SourceFiles/tele/agent/agent_markdown.cpp |  58 ++
+ .../SourceFiles/tele/agent/agent_markdown.h   |  10 +
+ .../SourceFiles/tele/agent/agent_panel.cpp    | 531 +++++++++++
  Telegram/SourceFiles/tele/agent/agent_panel.h |  27 +
  .../SourceFiles/tele/agent/agent_protocol.cpp | 872 ++++++++++++++++++
  .../SourceFiles/tele/agent/agent_protocol.h   | 168 ++++
- .../SourceFiles/tele/agent/agent_runner.cpp   | 462 ++++++++++
+ .../SourceFiles/tele/agent/agent_runner.cpp   | 470 ++++++++++
  .../SourceFiles/tele/agent/agent_runner.h     |  81 ++
  .../SourceFiles/tele/agent/agent_store.cpp    | 176 ++++
  Telegram/SourceFiles/tele/agent/agent_store.h |  42 +
- .../SourceFiles/tele/agent/agent_tools.cpp    | 645 +++++++++++++
+ .../SourceFiles/tele/agent/agent_tools.cpp    | 642 +++++++++++++
  Telegram/SourceFiles/tele/agent/agent_tools.h |  57 ++
  .../SourceFiles/tele/tele_mad_link_parser.cpp |   3 +-
  Telegram/SourceFiles/tele/tele_mad_links.cpp  |  11 +
@@ -27,7 +29,9 @@ Subject: [PATCH] feat: ai agent that reads and answers your chats with your
  .../tele/tests/mad_logic_tests.cpp            |  64 ++
  .../SourceFiles/window/window_main_menu.cpp   |   2 +
  Telegram/cmake/mad_tests.cmake                |   1 +
- 22 files changed, 3414 insertions(+), 3 deletions(-)
+ 24 files changed, 3524 insertions(+), 3 deletions(-)
+ create mode 100644 Telegram/SourceFiles/tele/agent/agent_markdown.cpp
+ create mode 100644 Telegram/SourceFiles/tele/agent/agent_markdown.h
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_panel.cpp
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_panel.h
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_protocol.cpp
@@ -40,10 +44,10 @@ Subject: [PATCH] feat: ai agent that reads and answers your chats with your
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_tools.h
 
 diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
-index 59e23b8f323aa16ead4dd3ae1acb8b4c6dfc4cf4..05feed462624b7b303dc759ffab30cf1e3177ac8 100644
+index 59e23b8f323aa16ead4dd3ae1acb8b4c6dfc4cf4..98ab12bcf23cf3d7bc7e9134fdf376456296ef42 100644
 --- a/Telegram/CMakeLists.txt
 +++ b/Telegram/CMakeLists.txt
-@@ -2680,6 +2680,16 @@ PRIVATE
+@@ -2680,6 +2680,18 @@ PRIVATE
      tele/tele_linked_accounts.h
      tele/tele_linked_accounts_data.cpp
      tele/tele_linked_accounts_data.h
@@ -57,14 +61,16 @@ index 59e23b8f323aa16ead4dd3ae1acb8b4c6dfc4cf4..05feed462624b7b303dc759ffab30cf1
 +    tele/agent/agent_store.h
 +    tele/agent/agent_tools.cpp
 +    tele/agent/agent_tools.h
++    tele/agent/agent_markdown.cpp
++    tele/agent/agent_markdown.h
      tele/tele_mad_names.cpp
      tele/tele_mad_names.h
      tele/tele_snippets.cpp
 diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
-index 054e309644b6e3ca834b8740b4bebde6a2746557..6782a74191f3bc0d072298fb30aa51451bdd9f47 100644
+index 054e309644b6e3ca834b8740b4bebde6a2746557..5e774cde66969ea3280d8420176611456c2224cf 100644
 --- a/Telegram/Resources/langs/mad_ru.json
 +++ b/Telegram/Resources/langs/mad_ru.json
-@@ -2243,5 +2243,69 @@
+@@ -2243,5 +2243,70 @@
    "Link an account": "Привязать аккаунт",
    "Account linked.": "Аккаунт привязан.",
    "Too many linked accounts.": "Привязано слишком много аккаунтов.",
@@ -76,6 +82,7 @@ index 054e309644b6e3ca834b8740b4bebde6a2746557..6782a74191f3bc0d072298fb30aa5145
 +  "API key": "API-ключ",
 +  "Add an API key first.": "Сначала добавь API-ключ.",
 +  "Add an API key in the agent settings.": "Добавь API-ключ в настройках агента.",
++  "The agent is off: mad was started with -teleoffline.": "Агент выключен: mad запущен с -teleoffline.",
 +  "Agent": "Агент",
 +  "Agent settings": "Настройки агента",
 +  "Anthropic's agent can search the web and read pages.": "Агент на Anthropic может искать в интернете и читать страницы.",
@@ -282,13 +289,94 @@ index 233339570d7c4ce73a8045f7d87612d186ff1fca..433900c8c89cf904eb86c744ab92b19f
  	add(u"server"_q, u"Server"_q, st::menuIconLink,
  		{ u"aliases"_q, u"синхронизация"_q, u"алиасы"_q }, FillMadServer);
  	add(u"backup"_q, u"Backup and updates"_q, st::menuIconManage,
+diff --git a/Telegram/SourceFiles/tele/agent/agent_markdown.cpp b/Telegram/SourceFiles/tele/agent/agent_markdown.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..9855d65ecdd30418bab7c2e8f6f86ca886480423
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/agent/agent_markdown.cpp
+@@ -0,0 +1,58 @@
++#include "tele/agent/agent_markdown.h"
++
++#include "ui/widgets/fields/input_field.h"
++#include "styles/style_widgets.h"
++
++namespace Tele::Agent {
++namespace {
++
++[[nodiscard]] TextWithTags ExtractLinks(const QString &text) {
++	static const auto expression = QRegularExpression(
++		uR"(\[([^\[\]\n]+)\]\(([^()\s]+)\))"_q);
++	auto result = TextWithTags();
++	auto from = 0;
++	auto iterator = expression.globalMatch(text);
++	while (iterator.hasNext()) {
++		const auto match = iterator.next();
++		const auto url = match.captured(2);
++		if (!Ui::InputField::IsValidMarkdownLink(url)) {
++			continue;
++		}
++		const auto label = match.captured(1);
++		result.text.append(text.mid(from, match.capturedStart() - from));
++		result.tags.push_back({
++			int(result.text.size()),
++			int(label.size()),
++			url,
++		});
++		result.text.append(label);
++		from = match.capturedEnd();
++	}
++	result.text.append(text.mid(from));
++	return result;
++}
++
++} // namespace
++
++TextWithTags MarkdownToTags(const QString &text) {
++	auto field = Ui::InputField(
++		nullptr,
++		st::defaultInputField,
++		Ui::InputField::Mode::MultiLine,
++		rpl::single(QString()),
++		QString());
++	field.resize(style::ConvertScale(1024), field.height());
++	field.setMarkdownReplacesEnabled(true);
++	field.setTextWithTags(ExtractLinks(text));
++	return field.getTextWithAppliedMarkdown();
++}
++
++TextWithEntities MarkdownToEntities(const QString &text) {
++	const auto tags = MarkdownToTags(text);
++	return {
++		tags.text,
++		TextUtilities::ConvertTextTagsToEntities(tags.tags),
++	};
++}
++
++} // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_markdown.h b/Telegram/SourceFiles/tele/agent/agent_markdown.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd82cad1bfb4e813ce260908c97696a3170f980e
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/agent/agent_markdown.h
+@@ -0,0 +1,10 @@
++#pragma once
++
++#include "ui/text/text_entity.h"
++
++namespace Tele::Agent {
++
++[[nodiscard]] TextWithTags MarkdownToTags(const QString &text);
++[[nodiscard]] TextWithEntities MarkdownToEntities(const QString &text);
++
++} // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_panel.cpp b/Telegram/SourceFiles/tele/agent/agent_panel.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..9cbb0998bf8d977b5dfaf06a451185bced804fa1
+index 0000000000000000000000000000000000000000..290fed81283924ed74378e4805f163c02c2af58c
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/agent/agent_panel.cpp
-@@ -0,0 +1,497 @@
+@@ -0,0 +1,531 @@
 +#include "tele/agent/agent_panel.h"
++#include "tele/agent/agent_markdown.h"
 +
 +#include "base/options.h"
 +#include "core/application.h"
@@ -336,9 +424,40 @@ index 0000000000000000000000000000000000000000..9cbb0998bf8d977b5dfaf06a451185bc
 +}
 +
 +[[nodiscard]] TextWithEntities Markdown(const QString &text) {
-+	return TextUtilities::ParseEntities(
-+		text,
-+		TextParseLinks | TextParseMarkdown);
++	constexpr auto kMaxCached = 512;
++	static auto cache = base::flat_map<QString, TextWithEntities>();
++	if (const auto i = cache.find(text); i != end(cache)) {
++		return i->second;
++	}
++	auto result = MarkdownToEntities(text);
++	const auto links = TextUtilities::ParseEntities(
++		result.text,
++		TextParseLinks).entities;
++	for (const auto &link : links) {
++		const auto from = link.offset();
++		const auto till = from + link.length();
++		const auto blocked = ranges::any_of(result.entities, [&](
++				const EntityInText &entity) {
++			const auto type = entity.type();
++			return (entity.offset() < till)
++				&& (entity.offset() + entity.length() > from)
++				&& (type == EntityType::CustomUrl
++					|| type == EntityType::Code
++					|| type == EntityType::Pre);
++		});
++		if (!blocked) {
++			result.entities.push_back(link);
++		}
++	}
++	ranges::stable_sort(
++		result.entities,
++		ranges::less(),
++		&EntityInText::offset);
++	if (int(cache.size()) >= kMaxCached) {
++		cache.clear();
++	}
++	cache.emplace(text, result);
++	return result;
 +}
 +
 +[[nodiscard]] TextWithEntities Authored(
@@ -558,7 +677,9 @@ index 0000000000000000000000000000000000000000..9cbb0998bf8d977b5dfaf06a451185bc
 +		const auto streaming = runner.streaming();
 +		state->live->setMarkedText(streaming.isEmpty()
 +			? TextWithEntities()
-+			: Authored(Tr(u"Agent"_q), Markdown(streaming)));
++			: Authored(
++				Tr(u"Agent"_q),
++				TextWithEntities::Simple(streaming)));
 +		state->status = runner.status();
 +		status->setText(state->status);
 +		send->setVisible(!runner.running());
@@ -1872,15 +1993,16 @@ index 0000000000000000000000000000000000000000..eadb67bbfc3a2e0e8a6f9291d56a5d09
 +} // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_runner.cpp b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..26c308102154d7d14354d306285ce26bc3b896ec
+index 0000000000000000000000000000000000000000..4ad30581335de5a5bc9d6b161c8f8599c93de23b
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
-@@ -0,0 +1,462 @@
+@@ -0,0 +1,470 @@
 +#include "tele/agent/agent_runner.h"
 +
 +#include "data/data_user.h"
 +#include "main/main_session.h"
 +#include "tele/agent/agent_store.h"
++#include "tele/tele_launch_flags.h"
 +#include "tele/tele_lowercase.h"
 +
 +#include <QtCore/QJsonDocument>
@@ -2064,6 +2186,10 @@ index 0000000000000000000000000000000000000000..26c308102154d7d14354d306285ce26b
 +}
 +
 +void Runner::checkKey(Fn<void(QString)> done) {
++	if (OfflineForLaunch()) {
++		done(Tr(u"The agent is off: mad was started with -teleoffline."_q));
++		return;
++	}
 +	const auto provider = CurrentProvider();
 +	const auto key = _store->key(provider);
 +	const auto base = CurrentBaseUrl();
@@ -2106,6 +2232,9 @@ index 0000000000000000000000000000000000000000..26c308102154d7d14354d306285ce26b
 +	}
 +	if (++_iterations > kMaxIterations) {
 +		finish(Tr(u"The agent made too many steps in a row and stopped."_q));
++		return;
++	} else if (OfflineForLaunch()) {
++		finish(Tr(u"The agent is off: mad was started with -teleoffline."_q));
 +		return;
 +	}
 +	const auto provider = CurrentProvider();
@@ -2657,11 +2786,12 @@ index 0000000000000000000000000000000000000000..8a744004ea7cfdf87b62cd5bebdf16f0
 +} // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.cpp b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..cba2c0e665a1ecdaf5f4da64a50d74fb097bd75e
+index 0000000000000000000000000000000000000000..a389057ae5bf033d035dd6a46dc4cd340fadea29
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
-@@ -0,0 +1,645 @@
+@@ -0,0 +1,642 @@
 +#include "tele/agent/agent_tools.h"
++#include "tele/agent/agent_markdown.h"
 +
 +#include "api/api_common.h"
 +#include "apiwrap.h"
@@ -2813,11 +2943,7 @@ index 0000000000000000000000000000000000000000..cba2c0e665a1ecdaf5f4da64a50d74fb
 +}
 +
 +[[nodiscard]] TextWithTags MessageText(const QString &text) {
-+	auto parsed = TextUtilities::ParseEntities(text, TextParseMarkdown);
-+	return TextWithTags{
-+		parsed.text,
-+		TextUtilities::ConvertEntitiesToTextTags(parsed.entities),
-+	};
++	return MarkdownToTags(text);
 +}
 +
 +[[nodiscard]] ToolOutcome Error(const QString &text) {

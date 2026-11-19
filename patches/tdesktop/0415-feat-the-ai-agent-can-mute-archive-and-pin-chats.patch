@@ -16,10 +16,10 @@ Subject: [PATCH] feat: the ai agent can mute, archive and pin chats
  9 files changed, 218 insertions(+), 1 deletion(-)
 
 diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
-index 6782a74191f3bc0d072298fb30aa51451bdd9f47..5c6cfca9771ca57a9607a54f1be43f778fbce757 100644
+index 5e774cde66969ea3280d8420176611456c2224cf..afaa3ccd6f1011b8b1efafb5cccdeeabdbd4957a 100644
 --- a/Telegram/Resources/langs/mad_ru.json
 +++ b/Telegram/Resources/langs/mad_ru.json
-@@ -2307,5 +2307,15 @@
+@@ -2308,5 +2308,15 @@
    "What the agent can do": "Что агенту можно",
    "Official": "Официальный",
    "Anthropic-compatible": "Совместимый с Anthropic",
@@ -76,10 +76,10 @@ index 8a744004ea7cfdf87b62cd5bebdf16f003d04d33..fac7bc9099a0c31bb15c47d432c7f2a9
  
  } // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.cpp b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
-index cba2c0e665a1ecdaf5f4da64a50d74fb097bd75e..0b8c3baff564a4fd8082d1ae987352b9ef77f9b6 100644
+index a389057ae5bf033d035dd6a46dc4cd340fadea29..07124d6eaa1e1f5065ca0c4de0cddd5f96f29ffe 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_tools.cpp
 +++ b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
-@@ -4,9 +4,12 @@
+@@ -5,9 +5,12 @@
  #include "apiwrap.h"
  #include "base/unixtime.h"
  #include "data/data_peer.h"
@@ -92,7 +92,7 @@ index cba2c0e665a1ecdaf5f4da64a50d74fb097bd75e..0b8c3baff564a4fd8082d1ae987352b9
  #include "dialogs/dialogs_indexed_list.h"
  #include "dialogs/dialogs_main_list.h"
  #include "dialogs/dialogs_row.h"
-@@ -257,6 +260,84 @@ std::vector<ToolSpec> ToolSpecs() {
+@@ -254,6 +257,84 @@ std::vector<ToolSpec> ToolSpecs() {
  			}, { u"chat_id"_q, u"text"_q }),
  		});
  	}
@@ -177,7 +177,7 @@ index cba2c0e665a1ecdaf5f4da64a50d74fb097bd75e..0b8c3baff564a4fd8082d1ae987352b9
  	result.push_back({
  		u"remind"_q,
  		u"Remind the user about something later: a scheduled message to "
-@@ -344,6 +425,16 @@ void Tools::execute(
+@@ -341,6 +422,16 @@ void Tools::execute(
  		sendMessage(args, true, std::move(confirm), std::move(done));
  	} else if (name == u"remind"_q) {
  		remind(args, std::move(done));
@@ -194,7 +194,7 @@ index cba2c0e665a1ecdaf5f4da64a50d74fb097bd75e..0b8c3baff564a4fd8082d1ae987352b9
  	} else {
  		done(Error(u"This tool is not available."_q));
  	}
-@@ -642,4 +733,97 @@ void Tools::remind(const QJsonObject &args, Fn<void(ToolOutcome)> done) {
+@@ -639,4 +730,97 @@ void Tools::remind(const QJsonObject &args, Fn<void(ToolOutcome)> done) {
  	});
  }
  
