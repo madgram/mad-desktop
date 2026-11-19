@@ -8,7 +8,7 @@ Subject: [PATCH] feat: ai agent that reads and answers your chats with your
  Telegram/CMakeLists.txt                       |  10 +
  Telegram/Resources/langs/mad_ru.json          |  66 +-
  .../SourceFiles/settings/settings_tele.cpp    | 122 +++
- .../SourceFiles/tele/agent/agent_panel.cpp    | 490 ++++++++++
+ .../SourceFiles/tele/agent/agent_panel.cpp    | 497 ++++++++++
  Telegram/SourceFiles/tele/agent/agent_panel.h |  27 +
  .../SourceFiles/tele/agent/agent_protocol.cpp | 872 ++++++++++++++++++
  .../SourceFiles/tele/agent/agent_protocol.h   | 168 ++++
@@ -27,7 +27,7 @@ Subject: [PATCH] feat: ai agent that reads and answers your chats with your
  .../tele/tests/mad_logic_tests.cpp            |  64 ++
  .../SourceFiles/window/window_main_menu.cpp   |   2 +
  Telegram/cmake/mad_tests.cmake                |   1 +
- 22 files changed, 3407 insertions(+), 3 deletions(-)
+ 22 files changed, 3414 insertions(+), 3 deletions(-)
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_panel.cpp
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_panel.h
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_protocol.cpp
@@ -284,10 +284,10 @@ index 233339570d7c4ce73a8045f7d87612d186ff1fca..433900c8c89cf904eb86c744ab92b19f
  	add(u"backup"_q, u"Backup and updates"_q, st::menuIconManage,
 diff --git a/Telegram/SourceFiles/tele/agent/agent_panel.cpp b/Telegram/SourceFiles/tele/agent/agent_panel.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..737e796af530d2bf89fcd65c8587979b0750ab4d
+index 0000000000000000000000000000000000000000..9cbb0998bf8d977b5dfaf06a451185bced804fa1
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/agent/agent_panel.cpp
-@@ -0,0 +1,490 @@
+@@ -0,0 +1,497 @@
 +#include "tele/agent/agent_panel.h"
 +
 +#include "base/options.h"
@@ -692,11 +692,18 @@ index 0000000000000000000000000000000000000000..737e796af530d2bf89fcd65c8587979b
 +			Tr(u"The key is kept encrypted with this account's data on "
 +				"this computer and is not exported with the settings."_q),
 +			st::boxLabel));
-+		const auto field = box->addRow(object_ptr<Ui::PasswordInput>(
-+			box,
++		auto container = object_ptr<Ui::RpWidget>(box);
++		const auto raw = container.data();
++		const auto field = Ui::CreateChild<Ui::PasswordInput>(
++			raw,
 +			st::defaultInputField,
-+			rpl::single(Tr(u"Key"_q)),
-+			QString()));
++			rpl::single(Tr(u"Key"_q)));
++		raw->resize(raw->width(), field->height());
++		raw->widthValue() | rpl::on_next([=](int width) {
++			field->resize(width, field->height());
++			field->moveToLeft(0, 0);
++		}, raw->lifetime());
++		box->addRow(std::move(container));
 +		const auto save = [=] {
 +			Runner::For(session).setKey(provider, field->getLastText());
 +			box->closeBox();
