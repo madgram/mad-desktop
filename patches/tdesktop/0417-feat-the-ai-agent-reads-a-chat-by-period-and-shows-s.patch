@@ -1,0 +1,633 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "hello, i am forgotten" <me@thisisforgotten.com>
+Date: Thu, 19 Nov 2026 20:01:10 +0300
+Subject: [PATCH] feat: the ai agent reads a chat by period and shows search
+ matches in context
+
+---
+ Telegram/Resources/langs/mad_ru.json          |   3 +-
+ .../SourceFiles/tele/agent/agent_tools.cpp    | 472 +++++++++++++++---
+ Telegram/SourceFiles/tele/agent/agent_tools.h |  15 +
+ 3 files changed, 426 insertions(+), 64 deletions(-)
+
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 8f905e1db709be00bb792d02d4abe6eb058255f9..f88dda5149f9259ffd04d727eb0d618bf0331d03 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2328,5 +2328,6 @@
+   "Forwarding…": "Пересылаю…",
+   "Forward messages": "Пересылать сообщения",
+   "Forwards go at once, without a confirmation card.": "Пересылает сразу, без карточки подтверждения.",
+-  "With providers other than Anthropic, searches go to DuckDuckGo from your computer.": "С провайдерами кроме Anthropic поиск идёт через DuckDuckGo с вашего компьютера."
++  "With providers other than Anthropic, searches go to DuckDuckGo from your computer.": "С провайдерами кроме Anthropic поиск идёт через DuckDuckGo с вашего компьютера.",
++  "Scrolled through %1": "Пролистал %1"
+ }
+diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.cpp b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
+index f2832298313750a3b10c07e58f1f753afb76a76c..a9adb63b7c0c9895fa4ee95f8b86b2698d2b668d 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_tools.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
+@@ -44,7 +44,19 @@ namespace Tele::Agent {
+ namespace {
+ 
+ constexpr auto kMaxItemText = 1500;
+-constexpr auto kMaxReadLimit = 100;
++constexpr auto kMaxReadLimit = 300;
++constexpr auto kHistoryPage = 100;
++constexpr auto kPeriodPages = 8;
++constexpr auto kPeriodLimit = 600;
++constexpr auto kPeriodItemText = 300;
++constexpr auto kMaxLatestChars = 60000;
++constexpr auto kMaxPeriodChars = 70000;
++constexpr auto kSearchHits = 30;
++constexpr auto kContextHits = 6;
++constexpr auto kContextAround = 5;
++constexpr auto kContextItemText = 600;
++constexpr auto kMoreHits = 20;
++constexpr auto kMoreItemText = 200;
+ constexpr auto kPhotoSide = 1280;
+ constexpr auto kPhotoQuality = 75;
+ constexpr auto kPhotoTimeout = crl::time(25000);
+@@ -155,13 +167,15 @@ struct PhotoWait {
+ 		: (u"["_q + kind + u" "_q + name + u"]"_q);
+ }
+ 
+-[[nodiscard]] QString ItemText(not_null<HistoryItem*> item) {
++[[nodiscard]] QString ItemText(
++		not_null<HistoryItem*> item,
++		int limit = kMaxItemText) {
+ 	const auto tag = MediaTag(item);
+ 	auto text = (tag.isEmpty()
+ 		? item->notificationText().text
+ 		: item->originalText().text).trimmed();
+-	if (text.size() > kMaxItemText) {
+-		text = text.left(kMaxItemText) + QChar(0x2026);
++	if (text.size() > limit) {
++		text = text.left(limit) + QChar(0x2026);
+ 	}
+ 	if (!tag.isEmpty()) {
+ 		return text.isEmpty() ? tag : (tag + u" "_q + text);
+@@ -169,7 +183,9 @@ struct PhotoWait {
+ 	return text.isEmpty() ? u"[media]"_q : text;
+ }
+ 
+-[[nodiscard]] QString ItemLine(not_null<HistoryItem*> item) {
++[[nodiscard]] QString ItemLine(
++		not_null<HistoryItem*> item,
++		int limit = kMaxItemText) {
+ 	const auto from = item->from();
+ 	const auto author = item->out()
+ 		? u"me"_q
+@@ -180,7 +196,7 @@ struct PhotoWait {
+ 		QString::number(item->id.bare),
+ 		DateText(item->date()),
+ 		author,
+-		ItemText(item));
++		ItemText(item, limit));
+ }
+ 
+ [[nodiscard]] std::vector<not_null<HistoryItem*>> Items(
+@@ -221,6 +237,17 @@ struct PhotoWait {
+ 	return parsed.isValid() ? TimeId(parsed.toSecsSinceEpoch()) : 0;
+ }
+ 
++[[nodiscard]] TimeId ParseDay(const QString &text) {
++	const auto date = QDate::fromString(text.trimmed(), u"yyyy-MM-dd"_q);
++	return date.isValid()
++		? TimeId(date.startOfDay().toSecsSinceEpoch())
++		: TimeId(0);
++}
++
++[[nodiscard]] QString Arrow() {
++	return QString(QChar(0x2192));
++}
++
+ [[nodiscard]] TextWithTags MessageText(const QString &text) {
+ 	auto parsed = TextUtilities::ParseEntities(text, TextParseMarkdown);
+ 	return TextWithTags{
+@@ -465,16 +492,24 @@ std::vector<ToolSpec> ToolSpecs() {
+ 	if (read) {
+ 		result.push_back({
+ 			u"read_chat"_q,
+-			u"Read the latest messages of a chat. Returns messages oldest "
+-			"first as #id [date] author: text; media is described in square "
+-			"brackets. Unread messages are marked."_q,
++			u"Read the latest messages of a chat, or the messages of a "
++			"period. Returns messages oldest first as #id [date] author: "
++			"text; media is described in square brackets. Unread messages "
++			"are marked."_q,
+ 			Schema(QJsonObject{
+ 				{ u"chat_id"_q, Property(
+ 					u"string"_q,
+ 					u"chat_id from list_chats or search_chats."_q) },
+ 				{ u"limit"_q, Property(
+ 					u"integer"_q,
+-					u"How many latest messages to read, 1-100. Default 60."_q) },
++					u"How many latest messages to read, 1-300. Default 60."_q) },
++				{ u"from_date"_q, Property(
++					u"string"_q,
++					u"Optional: read the period starting this day, "
++					"YYYY-MM-DD (up to 600 messages)."_q) },
++				{ u"to_date"_q, Property(
++					u"string"_q,
++					u"Optional: the last day of the period, YYYY-MM-DD."_q) },
+ 			}, { u"chat_id"_q }),
+ 		});
+ 		result.push_back({
+@@ -500,7 +535,8 @@ std::vector<ToolSpec> ToolSpecs() {
+ 		result.push_back({
+ 			u"search_messages"_q,
+ 			u"Search messages by text across all of the user's chats, or "
+-			"inside one chat. Returns matches newest first."_q,
++			"inside one chat. Returns matches newest first; with chat_id "
++			"each match comes with 5 messages before and after it."_q,
+ 			Schema(QJsonObject{
+ 				{ u"query"_q, Property(u"string"_q, u"Words to search for."_q) },
+ 				{ u"chat_id"_q, Property(
+@@ -879,44 +915,371 @@ void Tools::readChat(const QJsonObject &args, Fn<void(ToolOutcome)> done) {
+ 		done(Error(u"Unknown chat_id."_q));
+ 		return;
+ 	}
++	if (const auto from = ParseDay(args.value(u"from_date"_q).toString())) {
++		const auto to = ParseDay(args.value(u"to_date"_q).toString());
++		readPeriod(
++			peer,
++			from,
++			to ? (to + 86400) : base::unixtime::now(),
++			std::move(done));
++		return;
++	}
+ 	const auto limit = std::clamp(
+ 		args.value(u"limit"_q).toInt(60),
+ 		1,
+ 		kMaxReadLimit);
+ 	const auto weak = base::make_weak(this);
+ 	const auto session = _session;
+-	_session->api().request(MTPmessages_GetHistory(
+-		peer->input(),
+-		MTP_int(0),
+-		MTP_int(0),
+-		MTP_int(0),
+-		MTP_int(limit),
+-		MTP_int(0),
+-		MTP_int(0),
+-		MTP_long(0)
+-	)).done([=](const MTPmessages_Messages &result) {
++	loadHistory(peer, limit, [=](
++			std::vector<not_null<HistoryItem*>> items,
++			QString error) {
+ 		if (!weak) {
+ 			return;
++		} else if (!error.isEmpty()) {
++			done(Error(error));
++			return;
++		}
++		const auto title = Title(peer);
++		if (items.empty()) {
++			done({
++				.content = u"No messages."_q,
++				.title = Tr(u"Read %1"_q).arg(title),
++			});
++			return;
+ 		}
+-		auto items = Items(session, result);
+-		ranges::sort(items, [](auto a, auto b) {
+-			return a->id < b->id;
+-		});
+ 		const auto history = session->data().history(peer);
+ 		const auto readTill = history->inboxReadTillId();
+ 		auto lines = QStringList();
+-		lines.push_back(u"Chat: %1 (%2)"_q.arg(Title(peer), Type(peer)));
+-		for (const auto &item : items) {
++		auto total = 0;
++		for (auto i = items.rbegin(); i != items.rend(); ++i) {
++			const auto item = *i;
+ 			auto line = ItemLine(item);
+ 			if (!item->out() && readTill && item->id > readTill) {
+ 				line = u"(unread) "_q + line;
+ 			}
+-			lines.push_back(line);
++			total += int(line.size());
++			if (total > kMaxLatestChars) {
++				lines.push_front(u"Older messages are cut by size."_q);
++				break;
++			}
++			lines.push_front(line);
+ 		}
++		lines.push_front(u"Chat: %1 (%2), %3 latest messages, oldest "
++			"first:"_q.arg(title, Type(peer), QString::number(items.size())));
+ 		done({
+ 			.content = lines.join('\n'),
+-			.title = Tr(u"Read %1"_q).arg(Title(peer)),
++			.title = Tr(u"Read %1"_q).arg(title),
++		});
++	});
++}
++
++void Tools::loadHistory(
++		not_null<PeerData*> peer,
++		int limit,
++		Fn<void(std::vector<not_null<HistoryItem*>>, QString)> done) {
++	struct State {
++		std::vector<not_null<HistoryItem*>> items;
++		MsgId offset = 0;
++		Fn<void()> next;
++	};
++	const auto state = std::make_shared<State>();
++	const auto weakState = std::weak_ptr<State>(state);
++	const auto weak = base::make_weak(this);
++	const auto session = _session;
++	state->next = [=] {
++		const auto strong = weakState.lock();
++		if (!strong) {
++			return;
++		}
++		const auto count = std::min(
++			limit - int(strong->items.size()),
++			kHistoryPage);
++		const auto finish = [=](QString error) {
++			auto items = std::move(strong->items);
++			ranges::sort(items, [](auto a, auto b) {
++				return a->id < b->id;
++			});
++			done(std::move(items), error);
++		};
++		session->api().request(MTPmessages_GetHistory(
++			peer->input(),
++			MTP_int(int(strong->offset.bare)),
++			MTP_int(0),
++			MTP_int(0),
++			MTP_int(count),
++			MTP_int(0),
++			MTP_int(0),
++			MTP_long(0)
++		)).done([=](const MTPmessages_Messages &result) {
++			if (!weak) {
++				return;
++			}
++			const auto page = Items(session, result);
++			auto oldest = strong->offset;
++			for (const auto &item : page) {
++				if (!oldest || item->id < oldest) {
++					oldest = item->id;
++				}
++			}
++			const auto progress = !page.empty() && (oldest != strong->offset);
++			strong->items.insert(end(strong->items), begin(page), end(page));
++			strong->offset = oldest;
++			if (progress && (int(strong->items.size()) < limit)) {
++				strong->next();
++			} else {
++				finish(QString());
++			}
++		}).fail([=](const MTP::Error &error) {
++			if (weak) {
++				finish(error.type());
++			}
++		}).send();
++	};
++	state->next();
++}
++
++void Tools::readPeriod(
++		not_null<PeerData*> peer,
++		TimeId from,
++		TimeId till,
++		Fn<void(ToolOutcome)> done) {
++	struct State {
++		std::vector<not_null<HistoryItem*>> items;
++		MsgId offset = 0;
++		int pages = 0;
++		Fn<void()> next;
++	};
++	const auto state = std::make_shared<State>();
++	const auto weakState = std::weak_ptr<State>(state);
++	const auto weak = base::make_weak(this);
++	const auto session = _session;
++	const auto title = Title(peer);
++	const auto toolTitle = Tr(u"Scrolled through %1"_q).arg(title);
++	state->next = [=] {
++		const auto strong = weakState.lock();
++		if (!strong) {
++			return;
++		}
++		const auto finish = [=](QString error) {
++			if (!error.isEmpty()) {
++				done(Error(error));
++				return;
++			}
++			auto items = std::vector<not_null<HistoryItem*>>();
++			for (const auto &item : strong->items) {
++				if (item->date() >= from && item->date() < till) {
++					items.push_back(item);
++				}
++			}
++			ranges::sort(items, [](auto a, auto b) {
++				return a->id < b->id;
++			});
++			if (items.empty()) {
++				done({
++					.content = u"No messages in this period."_q,
++					.title = toolTitle,
++				});
++				return;
++			}
++			auto lines = QStringList();
++			lines.push_back(u"Chat: %1, %2 messages for the period, oldest "
++				"first:"_q.arg(title, QString::number(items.size())));
++			auto total = 0;
++			for (const auto &item : items) {
++				const auto line = ItemLine(item, kPeriodItemText);
++				total += int(line.size());
++				if (total > kMaxPeriodChars) {
++					lines.push_back(u"The rest is cut by size."_q);
++					break;
++				}
++				lines.push_back(line);
++			}
++			done({ .content = lines.join('\n'), .title = toolTitle });
++		};
++		const auto offsetDate = strong->offset
++			? TimeId(0)
++			: (std::min(till, base::unixtime::now()) + 1);
++		session->api().request(MTPmessages_GetHistory(
++			peer->input(),
++			MTP_int(int(strong->offset.bare)),
++			MTP_int(offsetDate),
++			MTP_int(0),
++			MTP_int(kHistoryPage),
++			MTP_int(0),
++			MTP_int(0),
++			MTP_long(0)
++		)).done([=](const MTPmessages_Messages &result) {
++			if (!weak) {
++				return;
++			}
++			const auto page = Items(session, result);
++			auto oldest = strong->offset;
++			auto oldestDate = TimeId(0);
++			for (const auto &item : page) {
++				if (!oldest || item->id < oldest) {
++					oldest = item->id;
++					oldestDate = item->date();
++				}
++			}
++			const auto progress = !page.empty() && (oldest != strong->offset);
++			strong->items.insert(end(strong->items), begin(page), end(page));
++			strong->offset = oldest;
++			if (progress
++				&& (++strong->pages < kPeriodPages)
++				&& (oldestDate >= from)
++				&& (int(strong->items.size()) < kPeriodLimit)) {
++				strong->next();
++			} else {
++				finish(QString());
++			}
++		}).fail([=](const MTP::Error &error) {
++			if (weak) {
++				finish(error.type());
++			}
++		}).send();
++	};
++	state->next();
++}
++
++void Tools::searchWithContext(
++		not_null<PeerData*> peer,
++		const QString &query,
++		Fn<void(ToolOutcome)> done) {
++	const auto weak = base::make_weak(this);
++	const auto session = _session;
++	const auto title = Title(peer);
++	const auto toolTitle = Tr(u"Searched messages for \"%1\""_q).arg(query);
++	_session->api().request(MTPmessages_Search(
++		MTP_flags(0),
++		peer->input(),
++		MTP_string(query),
++		MTP_inputPeerEmpty(),
++		MTP_inputPeerEmpty(),
++		MTP_vector<MTPReaction>(),
++		MTP_int(0),
++		MTP_inputMessagesFilterEmpty(),
++		MTP_int(0),
++		MTP_int(0),
++		MTP_int(0),
++		MTP_int(0),
++		MTP_int(kSearchHits),
++		MTP_int(0),
++		MTP_int(0),
++		MTP_long(0)
++	)).done([=](const MTPmessages_Messages &result) {
++		if (!weak) {
++			return;
++		}
++		auto hits = Items(session, result);
++		ranges::sort(hits, [](auto a, auto b) {
++			return a->id > b->id;
+ 		});
++		if (hits.empty()) {
++			done({
++				.content = u"Nothing found for \"%1\" in \"%2\"."_q.arg(
++					query,
++					title),
++				.title = toolTitle,
++			});
++			return;
++		}
++		struct State {
++			std::vector<MsgId> hits;
++			int index = 0;
++			base::flat_set<MsgId> covered;
++			QStringList blocks;
++			Fn<void()> next;
++		};
++		const auto state = std::make_shared<State>();
++		for (const auto &item : hits) {
++			state->hits.push_back(item->id);
++		}
++		const auto weakState = std::weak_ptr<State>(state);
++		state->next = [=] {
++			const auto strong = weakState.lock();
++			if (!strong) {
++				return;
++			}
++			const auto count = int(strong->hits.size());
++			const auto last = std::min(count, kContextHits);
++			while (strong->index < last
++				&& strong->covered.contains(strong->hits[strong->index])) {
++				++strong->index;
++			}
++			if (strong->index >= last) {
++				auto content = u"Found %1 matches for \"%2\" in \"%3\". Each "
++					"match is marked with %4, with 5 messages around it."_q.arg(
++						QString::number(count),
++						query,
++						title,
++						Arrow());
++				content += u"\n\n"_q + strong->blocks.join(u"\n---\n"_q);
++				auto more = QStringList();
++				for (auto i = kContextHits; i < count; ++i) {
++					if (more.size() >= kMoreHits) {
++						break;
++					}
++					const auto item = session->data().message(
++						peer->id,
++						strong->hits[i]);
++					if (item) {
++						more.push_back(ItemLine(item, kMoreItemText));
++					}
++				}
++				if (!more.isEmpty()) {
++					content += u"\n\nMore matches without context:\n"_q
++						+ more.join('\n');
++				}
++				done({ .content = content, .title = toolTitle });
++				return;
++			}
++			const auto hit = strong->hits[strong->index++];
++			const auto add = [=](
++					std::vector<not_null<HistoryItem*>> around) {
++				ranges::sort(around, [](auto a, auto b) {
++					return a->id < b->id;
++				});
++				if (around.empty()) {
++					if (const auto item = session->data().message(
++							peer->id,
++							hit)) {
++						around.push_back(item);
++					}
++				}
++				auto lines = QStringList();
++				for (const auto &item : around) {
++					strong->covered.emplace(item->id);
++					const auto line = ItemLine(item, kContextItemText);
++					lines.push_back((item->id == hit)
++						? (Arrow() + u" "_q + line)
++						: line);
++				}
++				strong->covered.emplace(hit);
++				if (!lines.isEmpty()) {
++					strong->blocks.push_back(lines.join('\n'));
++				}
++				strong->next();
++			};
++			session->api().request(MTPmessages_GetHistory(
++				peer->input(),
++				MTP_int(int(hit.bare + 1)),
++				MTP_int(0),
++				MTP_int(-kContextAround),
++				MTP_int(kContextAround * 2 + 1),
++				MTP_int(0),
++				MTP_int(0),
++				MTP_long(0)
++			)).done([=](const MTPmessages_Messages &result) {
++				if (weak) {
++					add(Items(session, result));
++				}
++			}).fail([=](const MTP::Error &) {
++				if (weak) {
++					add({});
++				}
++			}).send();
++		};
++		state->next();
+ 	}).fail([=](const MTP::Error &error) {
+ 		if (weak) {
+ 			done(Error(error.type()));
+@@ -940,6 +1303,10 @@ void Tools::searchMessages(
+ 		done(Error(u"Unknown chat_id."_q));
+ 		return;
+ 	}
++	if (peer) {
++		searchWithContext(peer, query, std::move(done));
++		return;
++	}
+ 	const auto weak = base::make_weak(this);
+ 	const auto session = _session;
+ 	const auto finish = [=](const MTPmessages_Messages &result) {
+@@ -966,40 +1333,19 @@ void Tools::searchMessages(
+ 			done(Error(error.type()));
+ 		}
+ 	};
+-	if (peer) {
+-		_session->api().request(MTPmessages_Search(
+-			MTP_flags(0),
+-			peer->input(),
+-			MTP_string(query),
+-			MTP_inputPeerEmpty(),
+-			MTP_inputPeerEmpty(),
+-			MTP_vector<MTPReaction>(),
+-			MTP_int(0),
+-			MTP_inputMessagesFilterEmpty(),
+-			MTP_int(0),
+-			MTP_int(0),
+-			MTP_int(0),
+-			MTP_int(0),
+-			MTP_int(limit),
+-			MTP_int(0),
+-			MTP_int(0),
+-			MTP_long(0)
+-		)).done(finish).fail(fail).send();
+-	} else {
+-		_session->api().request(MTPmessages_SearchGlobal(
+-			MTP_flags(0),
+-			MTP_int(0),
+-			MTP_inputChannelEmpty(),
+-			MTP_string(query),
+-			MTP_inputMessagesFilterEmpty(),
+-			MTP_int(0),
+-			MTP_int(0),
+-			MTP_int(0),
+-			MTP_inputPeerEmpty(),
+-			MTP_int(0),
+-			MTP_int(limit)
+-		)).done(finish).fail(fail).send();
+-	}
++	_session->api().request(MTPmessages_SearchGlobal(
++		MTP_flags(0),
++		MTP_int(0),
++		MTP_inputChannelEmpty(),
++		MTP_string(query),
++		MTP_inputMessagesFilterEmpty(),
++		MTP_int(0),
++		MTP_int(0),
++		MTP_int(0),
++		MTP_inputPeerEmpty(),
++		MTP_int(0),
++		MTP_int(limit)
++	)).done(finish).fail(fail).send();
+ }
+ 
+ void Tools::sendMessage(
+diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.h b/Telegram/SourceFiles/tele/agent/agent_tools.h
+index 5744a57b79c6ac36e4b789195b33d8b972fc02aa..e2b899ca57a8ef345c61278efd535a07e704bbaf 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_tools.h
++++ b/Telegram/SourceFiles/tele/agent/agent_tools.h
+@@ -3,6 +3,8 @@
+ #include "base/weak_ptr.h"
+ #include "tele/agent/agent_protocol.h"
+ 
++class HistoryItem;
++class PeerData;
+ class QNetworkAccessManager;
+ class QUrl;
+ 
+@@ -75,6 +77,19 @@ private:
+ 	void webSearch(const QJsonObject &args, Fn<void(ToolOutcome)> done);
+ 	void webFetch(const QJsonObject &args, Fn<void(ToolOutcome)> done);
+ 	void fetch(const QUrl &url, int limit, Fn<void(Fetched)> done);
++	void loadHistory(
++		not_null<PeerData*> peer,
++		int limit,
++		Fn<void(std::vector<not_null<HistoryItem*>>, QString)> done);
++	void readPeriod(
++		not_null<PeerData*> peer,
++		TimeId from,
++		TimeId till,
++		Fn<void(ToolOutcome)> done);
++	void searchWithContext(
++		not_null<PeerData*> peer,
++		const QString &query,
++		Fn<void(ToolOutcome)> done);
+ 
+ 	const not_null<Main::Session*> _session;
+ 	std::unique_ptr<QNetworkAccessManager> _network;
