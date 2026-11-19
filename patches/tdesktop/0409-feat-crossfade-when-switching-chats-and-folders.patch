@@ -1,0 +1,257 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:26:52 +0200
+Subject: [PATCH] feat: crossfade when switching chats and folders
+
+---
+ Telegram/CMakeLists.txt                       |  2 +
+ Telegram/Resources/langs/mad_ru.json          |  4 +-
+ .../SourceFiles/dialogs/dialogs_widget.cpp    |  8 +++
+ Telegram/SourceFiles/mainwidget.cpp           | 12 +++++
+ .../SourceFiles/settings/settings_tele.cpp    |  4 ++
+ Telegram/SourceFiles/tele/tele_crossfade.cpp  | 50 +++++++++++++++++++
+ Telegram/SourceFiles/tele/tele_crossfade.h    |  7 +++
+ Telegram/SourceFiles/tele/tele_options.cpp    | 14 ++++++
+ Telegram/SourceFiles/tele/tele_options.h      |  2 +
+ .../SourceFiles/tele/tele_settings_io.cpp     |  1 +
+ 10 files changed, 103 insertions(+), 1 deletion(-)
+ create mode 100644 Telegram/SourceFiles/tele/tele_crossfade.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_crossfade.h
+
+diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
+index cdc0ad145dedb3d52a8d9ed58a149d488b9341f2..3b39373ec179563b90542bda3c2008fa52ca8e4e 100644
+--- a/Telegram/CMakeLists.txt
++++ b/Telegram/CMakeLists.txt
+@@ -2674,6 +2674,8 @@ PRIVATE
+     tele/tele_jump_plan.h
+     tele/tele_incoming_fade.cpp
+     tele/tele_incoming_fade.h
++    tele/tele_crossfade.cpp
++    tele/tele_crossfade.h
+     tele/tele_mad_names.cpp
+     tele/tele_mad_names.h
+     tele/tele_snippets.cpp
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index c937bf196dd9c980238a2271a80f442124a8b7c1..7bd4b20f2d77f06eb741e1aa6f2bbf009685fcc5 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2161,5 +2161,7 @@
+   "Smooth jumps in chats": "Плавные прыжки по чату",
+   "Jumps to a reply, a pinned message or the bottom glide over up to three screens instead of one.": "Переход к ответу, закрепу или вниз чата плавно пролистывает до трёх экранов, а не один.",
+   "Fade in new messages": "Плавное появление новых сообщений",
+-  "Incoming messages fade in while they slide up.": "Входящие сообщения проявляются, пока выезжают снизу."
++  "Incoming messages fade in while they slide up.": "Входящие сообщения проявляются, пока выезжают снизу.",
++  "Crossfade when switching chats": "Плавная смена чатов",
++  "Opening another chat or folder fades from the old one instead of changing at once.": "Другой чат или папка плавно проявляются поверх старых, а не меняются резко."
+ }
+diff --git a/Telegram/SourceFiles/dialogs/dialogs_widget.cpp b/Telegram/SourceFiles/dialogs/dialogs_widget.cpp
+index 622ebbb84be7d1953e9f6d8cc80b5556c1e98451..3d65252b7deffc81179588479e36628dc7282e0e 100644
+--- a/Telegram/SourceFiles/dialogs/dialogs_widget.cpp
++++ b/Telegram/SourceFiles/dialogs/dialogs_widget.cpp
+@@ -100,6 +100,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "tele/tele_search_types.h"
+ #include "tele/scripting/tele_script_dialogs.h"
+ #include "tele/tele_updater.h"
++#include "tele/tele_crossfade.h"
++#include "tele/tele_options.h"
+ #include "styles/style_dialogs.h"
+ #include "styles/style_chat.h"
+ #include "styles/style_chat_helpers.h"
+@@ -2690,6 +2692,12 @@ void Widget::switchToChatsFilter(FilterId id) {
+ 		&& (_chatsFilterSwipeSwitch
+ 			|| (_chatFilters && !_chatFilters->isHidden()));
+ 	if (!animated) {
++		if ((was != id)
++			&& !isHidden()
++			&& !_showAnimation
++			&& ::Tele::ChatCrossfade()) {
++			::Tele::StartCrossfade(_scroll.data());
++		}
+ 		_inner->switchToFilter(id);
+ 		return;
+ 	}
+diff --git a/Telegram/SourceFiles/mainwidget.cpp b/Telegram/SourceFiles/mainwidget.cpp
+index f773f737fa2fc78ce757a536ea57112d6bc862a4..691f1fd7486cf28f664330785021c7912c1e548b 100644
+--- a/Telegram/SourceFiles/mainwidget.cpp
++++ b/Telegram/SourceFiles/mainwidget.cpp
+@@ -100,6 +100,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "storage/storage_user_photos.h"
+ #include "tele/secret/secret_chats.h"
+ #include "tele/tele_changelog_chat.h"
++#include "tele/tele_crossfade.h"
++#include "tele/tele_options.h"
+ #include "styles/style_dialogs.h"
+ #include "styles/style_chat.h"
+ #include "styles/style_window.h"
+@@ -1684,6 +1686,16 @@ void MainWidget::showHistory(
+ 		? prepareHistoryAnimation(peerId)
+ 		: Window::SectionSlideParams();
+ 
++	if (!animationParams
++		&& !alreadyThatPeer
++		&& peerId
++		&& !_mainSection
++		&& !_history->isHidden()
++		&& (params.animated != anim::type::instant)
++		&& Tele::ChatCrossfade()) {
++		Tele::StartCrossfade(_history.get());
++	}
++
+ 	if (!back && (way != Way::ClearStack)) {
+ 		// This may modify the current section, for example remove its contents.
+ 		saveSectionInStack(params);
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index 09b08bee18c135161e48b009f3feaf34e66cf567..c308f3fcc8a2acd4a5e062e71a69c4cd93fec135 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -2848,6 +2848,10 @@ void FillInterface(SectionBuilder &builder) {
+ 		builder,
+ 		::Tele::kOptionAnimateIncoming,
+ 		{ u"message"_q, u"fade"_q, u"animation"_q });
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionChatCrossfade,
++		{ u"chat"_q, u"folder"_q, u"fade"_q, u"animation"_q });
+ 	AddGroupDivider(builder);
+ 	AddGroupTitle(builder, u"Text"_q);
+ 	AddOptionToggle(builder, ::Tele::kOptionLowercase);
+diff --git a/Telegram/SourceFiles/tele/tele_crossfade.cpp b/Telegram/SourceFiles/tele/tele_crossfade.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..903e5bc6ea4db12f3c94e762054deb1522fe63ef
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_crossfade.cpp
+@@ -0,0 +1,50 @@
++#include "tele/tele_crossfade.h"
++
++#include "ui/effects/animations.h"
++#include "ui/rp_widget.h"
++#include "ui/ui_utility.h"
++
++#include <QtGui/QPainter>
++
++namespace Tele {
++namespace {
++
++constexpr auto kDuration = crl::time(220);
++
++} // namespace
++
++void StartCrossfade(not_null<QWidget*> widget) {
++	const auto parent = widget->parentWidget();
++	if (!parent || widget->isHidden() || widget->size().isEmpty()) {
++		return;
++	}
++	auto cache = Ui::GrabWidget(widget);
++	if (cache.isNull()) {
++		return;
++	}
++	const auto overlay = Ui::CreateChild<Ui::RpWidget>(parent);
++	overlay->setAttribute(Qt::WA_TransparentForMouseEvents);
++	overlay->setGeometry(widget->geometry());
++	struct State {
++		QPixmap cache;
++		Ui::Animations::Simple animation;
++	};
++	const auto state = overlay->lifetime().make_state<State>();
++	state->cache = std::move(cache);
++	overlay->paintRequest() | rpl::on_next([=] {
++		auto p = QPainter(overlay);
++		p.setOpacity(state->animation.value(0.));
++		p.drawPixmap(0, 0, state->cache);
++	}, overlay->lifetime());
++	state->animation.start([=] {
++		overlay->update();
++		if (!state->animation.animating()) {
++			overlay->hide();
++			overlay->deleteLater();
++		}
++	}, 1., 0., kDuration, anim::easeOutCubic);
++	overlay->show();
++	overlay->raise();
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_crossfade.h b/Telegram/SourceFiles/tele/tele_crossfade.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..547eae42e2203660388c1ca6fae4b5a4cf119251
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_crossfade.h
+@@ -0,0 +1,7 @@
++#pragma once
++
++namespace Tele {
++
++void StartCrossfade(not_null<QWidget*> widget);
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index d11c2dd5fbb5abc803c7b56565293871c868b278..0301c663a6851a9d67faa205cd86965a311bac72 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -78,6 +78,7 @@ const char kOptionListKeys[] = "tele-list-keys";
+ const char kOptionSmoothScroll[] = "tele-smooth-scroll";
+ const char kOptionSmoothJumps[] = "tele-smooth-jumps";
+ const char kOptionAnimateIncoming[] = "tele-animate-incoming";
++const char kOptionChatCrossfade[] = "tele-chat-crossfade";
+ const char kOptionSmoothTyping[] = "tele-smooth-typing";
+ const char kOptionSmoothTypingSpeed[] = "tele-smooth-typing-speed";
+ const char kOptionScrollStats[] = "tele-scroll-stats";
+@@ -735,6 +736,13 @@ base::options::toggle AnimateIncomingOption({
+ 	.description = "Incoming messages fade in while they slide up.",
+ });
+ 
++base::options::toggle ChatCrossfadeOption({
++	.id = kOptionChatCrossfade,
++	.name = "Crossfade when switching chats",
++	.description = "Opening another chat or folder fades from the old one "
++		"instead of changing at once.",
++});
++
+ base::options::toggle SmoothScrollOption({
+ 	.id = kOptionSmoothScroll,
+ 	.name = "Smooth wheel scrolling",
+@@ -2643,6 +2651,12 @@ bool AnimateIncoming() {
+ 		&& !anim::Disabled();
+ }
+ 
++bool ChatCrossfade() {
++	return ChatCrossfadeOption.value()
++		&& !ReduceMotionOption.value()
++		&& !anim::Disabled();
++}
++
+ bool SmoothJumps() {
+ 	return SmoothJumpsOption.value()
+ 		&& !ReduceMotionOption.value()
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index 120c8763e6228cf49b10149793dd6cfaaab36648..3517940d80a9fe13c9cc07bbecfa1722ea5d54e4 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -66,6 +66,7 @@ extern const char kOptionChatListNoReorderAnimation[];
+ extern const char kOptionReduceMotion[];
+ extern const char kOptionSmoothJumps[];
+ extern const char kOptionAnimateIncoming[];
++extern const char kOptionChatCrossfade[];
+ extern const char kOptionReduceMotionSaved[];
+ extern const char kOptionListKeys[];
+ extern const char kOptionSmoothScroll[];
+@@ -395,6 +396,7 @@ void SetLinkPreviews(const QString &value);
+ [[nodiscard]] bool ReduceMotion();
+ [[nodiscard]] bool SmoothJumps();
+ [[nodiscard]] bool AnimateIncoming();
++[[nodiscard]] bool ChatCrossfade();
+ [[nodiscard]] rpl::producer<> ReduceMotionChanges();
+ [[nodiscard]] QString ReduceMotionSaved();
+ void SetReduceMotionSaved(const QString &value);
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index aa828cef3acfa010a16da7ca81fda29d897edc5c..5103fe815e4dcbca0e66c86d4d4ce08c6b20ac48 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -295,6 +295,7 @@ struct Spec {
+ 		Toggle(kOptionHideRecordButton),
+ 		Toggle(kOptionSmoothJumps),
+ 		Toggle(kOptionAnimateIncoming),
++		Toggle(kOptionChatCrossfade),
+ 		Toggle(kOptionHideForeignAgent),
+ 		Toggle(kOptionHideBirthdays),
+ 		Toggle(kOptionSilentByDefault),
