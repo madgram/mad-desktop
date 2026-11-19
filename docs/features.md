@@ -537,6 +537,7 @@ everything else.
 | [407](../patches/tdesktop/0407-feat-smooth-jumps-in-chats.patch) | jumps to a reply, a pinned message or the bottom of a chat glide over up to three screens and take longer the farther they go | settings → mad → interface, off |
 | [408](../patches/tdesktop/0408-feat-new-messages-can-fade-in.patch) | incoming messages fade in while they slide up | settings → mad → interface, off |
 | [409](../patches/tdesktop/0409-feat-crossfade-when-switching-chats-and-folders.patch) | opening another chat or folder fades over from the old one instead of changing at once | settings → mad → interface, off |
+| [410](../patches/tdesktop/0410-feat-smooth-zoom-in-the-media-viewer.patch) | zooming and rotating in the media viewer glide to the new size, also without opengl | settings → mad → interface, off |
 | [1006](../patches/Telegram/lib_ui/0006-feat-let-scripts-swap-label-texts-and-find-full-widt.patch) | text a script changed in tele's windows comes back exactly as it was, formatting and custom emoji included, when the script stops, and rows a script adds to info tables stay above their last full-width line | with 301 |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1011](../patches/Telegram/lib_ui/0009-feat-let-labels-pick-their-text-pen-per-paint.patch) | the part of animated profile names that lives in the ui library | with 390 |

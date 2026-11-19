@@ -1,0 +1,166 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:28:00 +0200
+Subject: [PATCH] feat: smooth zoom in the media viewer
+
+---
+ Telegram/Resources/langs/mad_ru.json          |  4 +++-
+ .../media/view/media_view_overlay_widget.cpp  | 22 +++++++++++--------
+ .../media/view/media_view_overlay_widget.h    |  1 +
+ .../SourceFiles/settings/settings_tele.cpp    |  4 ++++
+ Telegram/SourceFiles/tele/tele_options.cpp    | 14 ++++++++++++
+ Telegram/SourceFiles/tele/tele_options.h      |  2 ++
+ .../SourceFiles/tele/tele_settings_io.cpp     |  1 +
+ 7 files changed, 38 insertions(+), 10 deletions(-)
+
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 7bd4b20f2d77f06eb741e1aa6f2bbf009685fcc5..d706326fa321527cf805d5e404d842a20fffd242 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2163,5 +2163,7 @@
+   "Fade in new messages": "Плавное появление новых сообщений",
+   "Incoming messages fade in while they slide up.": "Входящие сообщения проявляются, пока выезжают снизу.",
+   "Crossfade when switching chats": "Плавная смена чатов",
+-  "Opening another chat or folder fades from the old one instead of changing at once.": "Другой чат или папка плавно проявляются поверх старых, а не меняются резко."
++  "Opening another chat or folder fades from the old one instead of changing at once.": "Другой чат или папка плавно проявляются поверх старых, а не меняются резко.",
++  "Smooth zoom in the media viewer": "Плавный зум в просмотрщике",
++  "Zooming and rotating photos and videos glide to the new size.": "Фото и видео плавно меняют размер при зуме и повороте."
+ }
+diff --git a/Telegram/SourceFiles/media/view/media_view_overlay_widget.cpp b/Telegram/SourceFiles/media/view/media_view_overlay_widget.cpp
+index 7aa9c679f8ae66c604ecafeb51d9e14b75529110..a7c916acde77e1d1d959ef1cceaecff3575d5702 100644
+--- a/Telegram/SourceFiles/media/view/media_view_overlay_widget.cpp
++++ b/Telegram/SourceFiles/media/view/media_view_overlay_widget.cpp
+@@ -5637,7 +5637,18 @@ void OverlayWidget::playbackControlsRotate() {
+ 			redisplayContent();
+ 		}
+ 	}
+-	if (_opengl) {
++	startGeometryAnimation();
++}
++
++void OverlayWidget::startGeometryAnimation() {
++	if (::Tele::ViewerAnimations()) {
++		_geometryAnimation.start(
++			[=] { update(); },
++			0.,
++			1.,
++			st::widgetFadeDuration * 3 / 2,
++			anim::easeOutCubic);
++	} else if (_opengl) {
+ 		_geometryAnimation.start(
+ 			[=] { update(); },
+ 			0.,
+@@ -7809,14 +7820,7 @@ void OverlayWidget::setZoomLevel(
+ 		_y = int(base::SafeRound(ny / (-z + 1) + anchorY));
+ 	}
+ 	snapXY();
+-	if (_opengl) {
+-		_geometryAnimation.start(
+-			[=] { update(); },
+-			0.,
+-			1.,
+-			st::widgetFadeDuration/*,
+-			anim::easeOutCirc*/);
+-	}
++	startGeometryAnimation();
+ 	update();
+ }
+ 
+diff --git a/Telegram/SourceFiles/media/view/media_view_overlay_widget.h b/Telegram/SourceFiles/media/view/media_view_overlay_widget.h
+index 4422d4ad2299584d0e6004e8394fd70be1ff8b80..af12cc7fcd33c374d284085d1a667d26b79c3ae4 100644
+--- a/Telegram/SourceFiles/media/view/media_view_overlay_widget.h
++++ b/Telegram/SourceFiles/media/view/media_view_overlay_widget.h
+@@ -260,6 +260,7 @@ private:
+ 	void playbackControlsFromFullScreen() override;
+ 	void playbackControlsToPictureInPicture() override;
+ 	void playbackControlsRotate() override;
++	void startGeometryAnimation();
+ 
+ 	void smtcPlay() override;
+ 	void smtcPause() override;
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index c308f3fcc8a2acd4a5e062e71a69c4cd93fec135..c401a174d0e923b341a9fd5848f8dde66fed6853 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -2896,6 +2896,10 @@ void FillInterface(SectionBuilder &builder) {
+ 		builder,
+ 		::Tele::kOptionViewerMouseBack,
+ 		{ u"mouse 4"_q, u"side button"_q, u"photo"_q, u"video"_q });
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionViewerAnimations,
++		{ u"zoom"_q, u"rotate"_q, u"photo"_q, u"animation"_q });
+ 	AddGroupDivider(builder);
+ 	AddGroupTitle(builder, u"Playback"_q);
+ 	AddPlaybackVolumes(builder);
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index 0301c663a6851a9d67faa205cd86965a311bac72..3c89105d45609f72e5005d36d0958cdbead611ac 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -79,6 +79,7 @@ const char kOptionSmoothScroll[] = "tele-smooth-scroll";
+ const char kOptionSmoothJumps[] = "tele-smooth-jumps";
+ const char kOptionAnimateIncoming[] = "tele-animate-incoming";
+ const char kOptionChatCrossfade[] = "tele-chat-crossfade";
++const char kOptionViewerAnimations[] = "tele-viewer-animations";
+ const char kOptionSmoothTyping[] = "tele-smooth-typing";
+ const char kOptionSmoothTypingSpeed[] = "tele-smooth-typing-speed";
+ const char kOptionScrollStats[] = "tele-scroll-stats";
+@@ -743,6 +744,13 @@ base::options::toggle ChatCrossfadeOption({
+ 		"instead of changing at once.",
+ });
+ 
++base::options::toggle ViewerAnimationsOption({
++	.id = kOptionViewerAnimations,
++	.name = "Smooth zoom in the media viewer",
++	.description = "Zooming and rotating photos and videos glide to the new "
++		"size.",
++});
++
+ base::options::toggle SmoothScrollOption({
+ 	.id = kOptionSmoothScroll,
+ 	.name = "Smooth wheel scrolling",
+@@ -2657,6 +2665,12 @@ bool ChatCrossfade() {
+ 		&& !anim::Disabled();
+ }
+ 
++bool ViewerAnimations() {
++	return ViewerAnimationsOption.value()
++		&& !ReduceMotionOption.value()
++		&& !anim::Disabled();
++}
++
+ bool SmoothJumps() {
+ 	return SmoothJumpsOption.value()
+ 		&& !ReduceMotionOption.value()
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index 3517940d80a9fe13c9cc07bbecfa1722ea5d54e4..277006888cd210267e40473c90bc39337998d222 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -67,6 +67,7 @@ extern const char kOptionReduceMotion[];
+ extern const char kOptionSmoothJumps[];
+ extern const char kOptionAnimateIncoming[];
+ extern const char kOptionChatCrossfade[];
++extern const char kOptionViewerAnimations[];
+ extern const char kOptionReduceMotionSaved[];
+ extern const char kOptionListKeys[];
+ extern const char kOptionSmoothScroll[];
+@@ -397,6 +398,7 @@ void SetLinkPreviews(const QString &value);
+ [[nodiscard]] bool SmoothJumps();
+ [[nodiscard]] bool AnimateIncoming();
+ [[nodiscard]] bool ChatCrossfade();
++[[nodiscard]] bool ViewerAnimations();
+ [[nodiscard]] rpl::producer<> ReduceMotionChanges();
+ [[nodiscard]] QString ReduceMotionSaved();
+ void SetReduceMotionSaved(const QString &value);
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index 5103fe815e4dcbca0e66c86d4d4ce08c6b20ac48..a474bc9aa93f1d26d7ad0322b7529f17c938114c 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -296,6 +296,7 @@ struct Spec {
+ 		Toggle(kOptionSmoothJumps),
+ 		Toggle(kOptionAnimateIncoming),
+ 		Toggle(kOptionChatCrossfade),
++		Toggle(kOptionViewerAnimations),
+ 		Toggle(kOptionHideForeignAgent),
+ 		Toggle(kOptionHideBirthdays),
+ 		Toggle(kOptionSilentByDefault),
