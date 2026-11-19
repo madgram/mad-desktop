@@ -2,7 +2,7 @@
 
 every tele patch, grouped by the release that brought it, newest first. [features](features.md) has the same rows grouped by settings page. release notes and the in-app what's new are made from these rows, so their format is strict: see [the patch row](development.md#the-patch-row).
 
-all 426 patches, newest release first.
+all 427 patches, newest release first.
 
 ### [mad dev](mad.md)
 
@@ -88,6 +88,7 @@ all 426 patches, newest release first.
 | [413](../patches/tdesktop/0413-feat-accounts-linked-in-mad-show-up-in-profiles.patch) | accounts people linked in mad, like Steam, Spotify, Discord or Twitch, show up in their profiles; a new accounts page links and unlinks your own through b.mad.tg, signing in silently with the @maddtgbot mini app | settings → mad → accounts, on |
 | [414](../patches/tdesktop/0414-feat-ai-agent-that-reads-and-answers-your-chats-with.patch) | an AI agent in its own window that lists, searches and reads your chats, sends and schedules messages after a confirmation card, sets reminders and searches the web; it works with your own Anthropic, OpenAI or compatible API key, kept encrypted with the account, and opens from the side menu, settings or mad://agent | side menu; settings → mad → ai agent |
 | [415](../patches/tdesktop/0415-feat-the-ai-agent-can-mute-archive-and-pin-chats.patch) | the ai agent can also mark chats read or unread, mute them for a while or for good, move them to the archive and pin them | settings → mad → ai agent, off |
+| [416](../patches/tdesktop/0416-feat-the-ai-agent-sees-photos-transcribes-voice-draf.patch) | the ai agent looks at photos, transcribes voice and round video messages, puts a draft into a chat and, if you allow it, forwards messages; with providers other than Anthropic it searches the web and reads pages through DuckDuckGo from your computer | settings → mad → ai agent, forwarding off |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1009](../patches/Telegram/lib_rpl/0001-fix-topic-tabs-no-longer-crash-after-you-move-them.patch) | topic and direct message tabs no longer crash after you move them to the top, bottom or side and then scroll them. the cause was in the library that passes events around, so anything else that lost updates the same way is fixed too | always on |
 | [1010](../patches/Telegram/ThirdParty/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs/0001-fix-refuse-await-using-outside-async-functions.patch) | closes the quickjs hole that let a bot's message widget run any program on your pc: the engine gets telegram's own `await using` fix from widget-sandbox 0.6.4, which telegram desktop 7.4.2 ships without | always on |

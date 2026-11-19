@@ -1,0 +1,1151 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "hello, i am forgotten" <me@thisisforgotten.com>
+Date: Thu, 19 Nov 2026 19:52:10 +0300
+Subject: [PATCH] feat: the ai agent sees photos, transcribes voice, drafts,
+ forwards and searches the web with any provider
+
+---
+ Telegram/Resources/langs/mad_ru.json          |  15 +-
+ .../SourceFiles/settings/settings_tele.cpp    |   1 +
+ .../SourceFiles/tele/agent/agent_runner.cpp   |  13 +-
+ .../SourceFiles/tele/agent/agent_store.cpp    |  11 +
+ Telegram/SourceFiles/tele/agent/agent_store.h |   1 +
+ .../SourceFiles/tele/agent/agent_tools.cpp    | 791 +++++++++++++++++-
+ Telegram/SourceFiles/tele/agent/agent_tools.h |  24 +
+ Telegram/SourceFiles/tele/tele_options.cpp    |  10 +-
+ Telegram/SourceFiles/tele/tele_options.h      |   1 +
+ .../SourceFiles/tele/tele_settings_io.cpp     |   1 +
+ 10 files changed, 859 insertions(+), 9 deletions(-)
+
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 5c6cfca9771ca57a9607a54f1be43f778fbce757..8f905e1db709be00bb792d02d4abe6eb058255f9 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2252,7 +2252,6 @@
+   "Add an API key in the agent settings.": "Добавь API-ключ в настройках агента.",
+   "Agent": "Агент",
+   "Agent settings": "Настройки агента",
+-  "Anthropic's agent can search the web and read pages.": "Агент на Anthropic может искать в интернете и читать страницы.",
+   "Ask about your chats, ask to retell a conversation, reply to someone or set a reminder. The agent uses your own API key from the settings.": "Спроси про свои чаты, попроси пересказать переписку, ответить кому-то или напомнить о чём-то. Агент работает на твоём API-ключе из настроек.",
+   "Ask the agent…": "Спроси агента…",
+   "Cancelled by the user.": "Отменено пользователем.",
+@@ -2317,5 +2316,17 @@
+   "Archived %1": "Убрал %1 в архив",
+   "Unarchived %1": "Вернул %1 из архива",
+   "Pinned %1": "Закрепил %1",
+-  "Unpinned %1": "Открепил %1"
++  "Unpinned %1": "Открепил %1",
++  "Looked at the photo": "Посмотрел фото",
++  "Transcribed a voice message": "Расшифровал голосовое",
++  "Drafted a reply in %1": "Оставил черновик в %1",
++  "Forwarded to %1": "Переслал в %1",
++  "Searched the web for \"%1\"": "Поискал в интернете «%1»",
++  "Looking at the photo…": "Смотрю фото…",
++  "Transcribing the voice message…": "Расшифровываю голосовое…",
++  "Writing a draft…": "Пишу черновик…",
++  "Forwarding…": "Пересылаю…",
++  "Forward messages": "Пересылать сообщения",
++  "Forwards go at once, without a confirmation card.": "Пересылает сразу, без карточки подтверждения.",
++  "With providers other than Anthropic, searches go to DuckDuckGo from your computer.": "С провайдерами кроме Anthropic поиск идёт через DuckDuckGo с вашего компьютера."
+ }
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index 6e9811ba7c2998c1db391b1960ccdbafa8fa3df2..89ffe49ff45c82bbd1029e2cef31dec6acabade1 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -4654,6 +4654,7 @@ void FillAgent(SectionBuilder &builder) {
+ 		builder,
+ 		::Tele::kOptionAgentChatActions,
+ 		{ u"ai"_q, u"mute"_q, u"archive"_q, u"pin"_q });
++	AddOptionToggle(builder, ::Tele::kOptionAgentForward, { u"ai"_q });
+ 	AddGroupDivider(builder);
+ }
+ 
+diff --git a/Telegram/SourceFiles/tele/agent/agent_runner.cpp b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
+index 26c308102154d7d14354d306285ce26bc3b896ec..9bfce6d26a715663a02a878c8038f6963150fccc 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_runner.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
+@@ -63,6 +63,14 @@ constexpr auto kMaxErrorBody = 16 * 1024;
+ 		return Tr(u"Looking through the chats…"_q);
+ 	} else if (name == u"search_messages"_q) {
+ 		return Tr(u"Searching messages…"_q);
++	} else if (name == u"view_photo"_q) {
++		return Tr(u"Looking at the photo…"_q);
++	} else if (name == u"transcribe_voice"_q) {
++		return Tr(u"Transcribing the voice message…"_q);
++	} else if (name == u"draft_reply"_q) {
++		return Tr(u"Writing a draft…"_q);
++	} else if (name == u"forward_messages"_q) {
++		return Tr(u"Forwarding…"_q);
+ 	}
+ 	return Tr(u"Working…"_q);
+ }
+@@ -428,6 +436,7 @@ void Runner::runTools(std::vector<ToolCall> calls, int index) {
+ 		message.toolCallId = call.id;
+ 		message.toolTitle = outcome.title;
+ 		message.isError = outcome.isError;
++		message.images = std::move(outcome.images);
+ 		_messages.push_back(std::move(message));
+ 		persist();
+ 		notify();
+@@ -450,9 +459,7 @@ void Runner::finish(const QString &error) {
+ 
+ void Runner::persist() {
+ 	_store->setMessages(_messages);
+-	if (_store->messages().size() != _messages.size()) {
+-		_messages = _store->messages();
+-	}
++	_messages = _store->messages();
+ }
+ 
+ void Runner::notify() {
+diff --git a/Telegram/SourceFiles/tele/agent/agent_store.cpp b/Telegram/SourceFiles/tele/agent/agent_store.cpp
+index 83225de06c3436d85f09b069f61d5b9dbccfcb97..edd5b602b5ff83e2ba3437bc1e956f64a0e98541 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_store.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_store.cpp
+@@ -19,6 +19,7 @@ constexpr auto kMagic = quint32(0x6d616461);
+ constexpr auto kVersion = qint32(1);
+ constexpr auto kMaxMessages = 400;
+ constexpr auto kMaxBytes = 32 * 1024 * 1024;
++constexpr auto kMaxImageMessages = 6;
+ 
+ [[nodiscard]] QString OptionText(const char id[]) {
+ 	return base::options::lookup<QString>(id).value().trimmed();
+@@ -63,6 +64,12 @@ void Store::setMessages(std::vector<Message> messages) {
+ 			messages.erase(begin(messages));
+ 		}
+ 	}
++	auto withImages = 0;
++	for (auto i = messages.rbegin(); i != messages.rend(); ++i) {
++		if (!i->images.empty() && (++withImages > kMaxImageMessages)) {
++			i->images.clear();
++		}
++	}
+ 	_messages = std::move(messages);
+ 	write();
+ }
+@@ -177,4 +184,8 @@ bool AllowChatActions() {
+ 	return OptionOn(kOptionAgentChatActions);
+ }
+ 
++bool AllowForward() {
++	return OptionOn(kOptionAgentForward);
++}
++
+ } // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_store.h b/Telegram/SourceFiles/tele/agent/agent_store.h
+index fac7bc9099a0c31bb15c47d432c7f2a94f954aa7..15b809f717dd5b73e3b221681c54c0b1284899d6 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_store.h
++++ b/Telegram/SourceFiles/tele/agent/agent_store.h
+@@ -39,5 +39,6 @@ private:
+ [[nodiscard]] bool SendWithoutConfirmation();
+ [[nodiscard]] bool AllowWebSearch();
+ [[nodiscard]] bool AllowChatActions();
++[[nodiscard]] bool AllowForward();
+ 
+ } // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.cpp b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
+index 0b8c3baff564a4fd8082d1ae987352b9ef77f9b6..f2832298313750a3b10c07e58f1f753afb76a76c 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_tools.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
+@@ -1,9 +1,17 @@
+ #include "tele/agent/agent_tools.h"
+ 
+ #include "api/api_common.h"
++#include "api/api_transcribes.h"
+ #include "apiwrap.h"
++#include "base/timer_rpl.h"
+ #include "base/unixtime.h"
++#include "core/application.h"
++#include "data/data_document.h"
++#include "data/data_drafts.h"
++#include "data/data_media_types.h"
+ #include "data/data_peer.h"
++#include "data/data_photo.h"
++#include "data/data_photo_media.h"
+ #include "data/data_histories.h"
+ #include "data/data_session.h"
+ #include "data/data_types.h"
+@@ -17,17 +25,42 @@
+ #include "history/history_item.h"
+ #include "main/main_session.h"
+ #include "tele/agent/agent_store.h"
++#include "tele/tele_launch_flags.h"
+ #include "tele/tele_lowercase.h"
++#include "ui/image/image.h"
+ 
++#include <QtCore/QBuffer>
+ #include <QtCore/QDateTime>
+ #include <QtCore/QLocale>
+ #include <QtCore/QTimeZone>
++#include <QtCore/QUrlQuery>
++#include <QtGui/QPainter>
++#include <QtNetwork/QHostAddress>
++#include <QtNetwork/QNetworkAccessManager>
++#include <QtNetwork/QNetworkReply>
++#include <QtNetwork/QNetworkRequest>
+ 
+ namespace Tele::Agent {
+ namespace {
+ 
+ constexpr auto kMaxItemText = 1500;
+ constexpr auto kMaxReadLimit = 100;
++constexpr auto kPhotoSide = 1280;
++constexpr auto kPhotoQuality = 75;
++constexpr auto kPhotoTimeout = crl::time(25000);
++constexpr auto kTranscribePoll = crl::time(300);
++constexpr auto kTranscribeTimeout = crl::time(60000);
++constexpr auto kMaxForward = 100;
++constexpr auto kSearchResults = 8;
++constexpr auto kMaxSearchBytes = 1024 * 1024;
++constexpr auto kMaxPageBytes = 3 * 1024 * 1024;
++constexpr auto kMaxPageText = 20000;
++constexpr auto kWebTimeout = 20000;
++
++struct PhotoWait {
++	std::shared_ptr<Data::PhotoMedia> view;
++	rpl::lifetime lifetime;
++};
+ 
+ [[nodiscard]] QJsonObject Property(
+ 		const QString &type,
+@@ -92,11 +125,47 @@ constexpr auto kMaxReadLimit = 100;
+ 	return base::unixtime::parse(date).toString(u"yyyy-MM-dd HH:mm"_q);
+ }
+ 
++[[nodiscard]] QString MediaTag(not_null<HistoryItem*> item) {
++	const auto media = item->media();
++	if (!media || media->webpage()) {
++		return QString();
++	} else if (media->photo()) {
++		return u"[photo]"_q;
++	}
++	const auto document = media->document();
++	if (!document) {
++		return QString();
++	} else if (document->isVoiceMessage()) {
++		return u"[voice message]"_q;
++	} else if (document->isVideoMessage()) {
++		return u"[round video message]"_q;
++	} else if (const auto sticker = document->sticker()) {
++		return sticker->alt.isEmpty()
++			? u"[sticker]"_q
++			: (u"[sticker "_q + sticker->alt + u"]"_q);
++	} else if (document->isAnimation()) {
++		return u"[GIF]"_q;
++	} else if (document->isVideoFile()) {
++		return u"[video]"_q;
++	}
++	const auto kind = document->isAudioFile() ? u"audio"_q : u"file"_q;
++	const auto name = document->filename();
++	return name.isEmpty()
++		? (u"["_q + kind + u"]"_q)
++		: (u"["_q + kind + u" "_q + name + u"]"_q);
++}
++
+ [[nodiscard]] QString ItemText(not_null<HistoryItem*> item) {
+-	auto text = item->notificationText().text.trimmed();
++	const auto tag = MediaTag(item);
++	auto text = (tag.isEmpty()
++		? item->notificationText().text
++		: item->originalText().text).trimmed();
+ 	if (text.size() > kMaxItemText) {
+ 		text = text.left(kMaxItemText) + QChar(0x2026);
+ 	}
++	if (!tag.isEmpty()) {
++		return text.isEmpty() ? tag : (tag + u" "_q + text);
++	}
+ 	return text.isEmpty() ? u"[media]"_q : text;
+ }
+ 
+@@ -164,6 +233,202 @@ constexpr auto kMaxReadLimit = 100;
+ 	return { .content = text, .isError = true };
+ }
+ 
++[[nodiscard]] MsgId MessageIdFromArgs(const QJsonObject &args) {
++	const auto value = args.value(u"message_id"_q);
++	const auto id = value.isString()
++		? value.toString().trimmed().remove(QChar('#')).toLongLong()
++		: qint64(value.toDouble());
++	return (id > 0) ? MsgId(id) : MsgId();
++}
++
++void WithItem(
++		not_null<Main::Session*> session,
++		not_null<PeerData*> peer,
++		MsgId id,
++		Fn<void(HistoryItem*)> callback) {
++	if (const auto item = session->data().message(peer->id, id)) {
++		callback(item);
++		return;
++	}
++	const auto peerId = peer->id;
++	session->api().requestMessageData(peer, id, [=] {
++		callback(session->data().message(peerId, id));
++	});
++}
++
++[[nodiscard]] Image EncodePhoto(QImage image) {
++	if (image.isNull()) {
++		return {};
++	}
++	image.setDevicePixelRatio(1.);
++	if (std::max(image.width(), image.height()) > kPhotoSide) {
++		image = image.scaled(
++			kPhotoSide,
++			kPhotoSide,
++			Qt::KeepAspectRatio,
++			Qt::SmoothTransformation);
++	}
++	auto canvas = QImage(image.size(), QImage::Format_RGB32);
++	canvas.fill(Qt::white);
++	{
++		auto p = QPainter(&canvas);
++		p.drawImage(0, 0, image);
++	}
++	auto bytes = QByteArray();
++	auto buffer = QBuffer(&bytes);
++	if (!buffer.open(QIODevice::WriteOnly)
++		|| !canvas.save(&buffer, "JPG", kPhotoQuality)) {
++		return {};
++	}
++	return { u"image/jpeg"_q, QString::fromLatin1(bytes.toBase64()) };
++}
++
++[[nodiscard]] bool LocalWeb() {
++	return AllowWebSearch() && (CurrentProvider() != Provider::Anthropic);
++}
++
++[[nodiscard]] QString DecodeEntities(const QString &text) {
++	if (!text.contains(QChar('&'))) {
++		return text;
++	}
++	static const auto entity = QRegularExpression(
++		u"&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z]{2,8});"_q);
++	static const auto named = base::flat_map<QString, QString>{
++		{ u"amp"_q, u"&"_q },
++		{ u"lt"_q, u"<"_q },
++		{ u"gt"_q, u">"_q },
++		{ u"quot"_q, u"\""_q },
++		{ u"apos"_q, u"'"_q },
++		{ u"nbsp"_q, u" "_q },
++		{ u"mdash"_q, QString(QChar(0x2014)) },
++		{ u"ndash"_q, QString(QChar(0x2013)) },
++		{ u"hellip"_q, QString(QChar(0x2026)) },
++		{ u"laquo"_q, QString(QChar(0x00AB)) },
++		{ u"raquo"_q, QString(QChar(0x00BB)) },
++		{ u"copy"_q, QString(QChar(0x00A9)) },
++	};
++	auto result = QString();
++	result.reserve(text.size());
++	auto position = qsizetype(0);
++	auto matches = entity.globalMatch(text);
++	while (matches.hasNext()) {
++		const auto match = matches.next();
++		result.append(text.mid(position, match.capturedStart() - position));
++		const auto name = match.captured(1);
++		auto replacement = QString();
++		if (name.startsWith(QChar('#'))) {
++			const auto hex = (name.size() > 1)
++				&& (name[1] == QChar('x') || name[1] == QChar('X'));
++			auto ok = false;
++			const auto code = hex
++				? name.mid(2).toUInt(&ok, 16)
++				: name.mid(1).toUInt(&ok, 10);
++			if (ok && code > 0 && code <= 0x10FFFF) {
++				if (QChar::requiresSurrogates(code)) {
++					const QChar pair[] = {
++						QChar(QChar::highSurrogate(code)),
++						QChar(QChar::lowSurrogate(code)),
++					};
++					replacement = QString(pair, 2);
++				} else {
++					replacement = QString(QChar(char16_t(code)));
++				}
++			}
++		} else {
++			const auto i = named.find(name.toLower());
++			if (i != end(named)) {
++				replacement = i->second;
++			}
++		}
++		result.append(replacement.isEmpty()
++			? match.captured(0)
++			: replacement);
++		position = match.capturedEnd();
++	}
++	result.append(text.mid(position));
++	return result;
++}
++
++[[nodiscard]] QString PlainText(QString html) {
++	static const auto tags = QRegularExpression(u"<[^>]*>"_q);
++	static const auto spaces = QRegularExpression(u"\\s+"_q);
++	html.replace(tags, u" "_q);
++	auto result = DecodeEntities(html);
++	result.replace(QChar(0x00A0), QChar(' '));
++	result.replace(spaces, u" "_q);
++	return result.trimmed();
++}
++
++[[nodiscard]] QString HtmlToText(QString html) {
++	const auto options = QRegularExpression::CaseInsensitiveOption
++		| QRegularExpression::DotMatchesEverythingOption;
++	static const auto title = QRegularExpression(
++		u"<title[^>]*>(.*?)</title>"_q,
++		options);
++	static const auto hidden = QRegularExpression(
++		u"<(script|style|noscript|svg|head|template)\\b[^>]*>.*?"
++		"</\\1\\s*>"_q,
++		options);
++	static const auto comments = QRegularExpression(
++		u"<!--.*?-->"_q,
++		QRegularExpression::DotMatchesEverythingOption);
++	static const auto breaks = QRegularExpression(
++		u"<br\\s*/?>|</(p|div|li|h[1-6]|tr|ul|ol|table|section|article|"
++		"header|footer|blockquote|pre)\\s*>"_q,
++		QRegularExpression::CaseInsensitiveOption);
++	static const auto tags = QRegularExpression(u"<[^>]*>"_q);
++	static const auto spaces = QRegularExpression(u"[ \\t\\r\\f\\v]+"_q);
++	static const auto edges = QRegularExpression(u" ?\\n ?"_q);
++	static const auto blank = QRegularExpression(u"\\n{3,}"_q);
++	const auto heading = title.match(html);
++	const auto name = heading.hasMatch()
++		? PlainText(heading.captured(1))
++		: QString();
++	html.remove(hidden);
++	html.remove(comments);
++	html.replace(breaks, u"\n"_q);
++	html.replace(tags, u" "_q);
++	html = DecodeEntities(html);
++	html.replace(QChar(0x00A0), QChar(' '));
++	html.replace(spaces, u" "_q);
++	html.replace(edges, u"\n"_q);
++	html.replace(blank, u"\n\n"_q);
++	html = html.trimmed();
++	return name.isEmpty() ? html : (name + u"\n\n"_q + html);
++}
++
++[[nodiscard]] bool IsLocalHost(const QString &host) {
++	const auto lower = host.toLower();
++	if (lower.isEmpty()
++		|| (lower == u"localhost"_q)
++		|| lower.endsWith(u".localhost"_q)
++		|| lower.endsWith(u".local"_q)
++		|| lower.endsWith(u".internal"_q)) {
++		return true;
++	}
++	auto address = QHostAddress();
++	if (!address.setAddress(lower)) {
++		return false;
++	} else if (address.isNull()
++		|| address.isLoopback()
++		|| address.isLinkLocal()) {
++		return true;
++	}
++	for (const auto &subnet : {
++		u"0.0.0.0/8"_q,
++		u"10.0.0.0/8"_q,
++		u"100.64.0.0/10"_q,
++		u"172.16.0.0/12"_q,
++		u"192.168.0.0/16"_q,
++		u"fc00::/7"_q,
++	}) {
++		if (address.isInSubnet(QHostAddress::parseSubnet(subnet))) {
++			return true;
++		}
++	}
++	return false;
++}
++
+ } // namespace
+ 
+ std::vector<ToolSpec> ToolSpecs() {
+@@ -212,6 +477,26 @@ std::vector<ToolSpec> ToolSpecs() {
+ 					u"How many latest messages to read, 1-100. Default 60."_q) },
+ 			}, { u"chat_id"_q }),
+ 		});
++		result.push_back({
++			u"view_photo"_q,
++			u"Look at a photo from a chat message to describe it or read "
++			"text on it. Messages with a photo are marked [photo]. Takes "
++			"chat_id and message_id from read_chat or search_messages."_q,
++			Schema(QJsonObject{
++				{ u"chat_id"_q, Property(u"string"_q) },
++				{ u"message_id"_q, Property(u"integer"_q) },
++			}, { u"chat_id"_q, u"message_id"_q }),
++		});
++		result.push_back({
++			u"transcribe_voice"_q,
++			u"Transcribe a voice message or a round video message to text "
++			"with Telegram's speech recognition. Takes chat_id and "
++			"message_id from read_chat or search_messages."_q,
++			Schema(QJsonObject{
++				{ u"chat_id"_q, Property(u"string"_q) },
++				{ u"message_id"_q, Property(u"integer"_q) },
++			}, { u"chat_id"_q, u"message_id"_q }),
++		});
+ 		result.push_back({
+ 			u"search_messages"_q,
+ 			u"Search messages by text across all of the user's chats, or "
+@@ -259,6 +544,52 @@ std::vector<ToolSpec> ToolSpecs() {
+ 					u"Send this many minutes from now."_q) },
+ 			}, { u"chat_id"_q, u"text"_q }),
+ 		});
++		result.push_back({
++			u"draft_reply"_q,
++			u"Put a draft into the input field of a chat without sending "
++			"it, replacing the current draft. The user opens the chat, "
++			"edits and sends it themselves."_q,
++			Schema(QJsonObject{
++				{ u"chat_id"_q, Property(
++					u"string"_q,
++					u"chat_id from list_chats or search_chats."_q) },
++				{ u"text"_q, Property(u"string"_q, u"The draft text."_q) },
++			}, { u"chat_id"_q, u"text"_q }),
++		});
++	}
++	if (AllowForward()) {
++		result.push_back({
++			u"forward_messages"_q,
++			u"Forward messages from one chat to another, at once and "
++			"without confirmation. message_ids come from read_chat or "
++			"search_messages. Use only when the user asked to forward."_q,
++			Schema(QJsonObject{
++				{ u"from_chat_id"_q, Property(u"string"_q) },
++				{ u"message_ids"_q, QJsonObject{
++					{ u"type"_q, u"array"_q },
++					{ u"items"_q, Property(u"integer"_q) },
++				} },
++				{ u"to_chat_id"_q, Property(u"string"_q) },
++			}, { u"from_chat_id"_q, u"message_ids"_q, u"to_chat_id"_q }),
++		});
++	}
++	if (LocalWeb()) {
++		result.push_back({
++			u"web_search"_q,
++			u"Search the web (DuckDuckGo). Returns up to 8 results with "
++			"title, url and snippet. Use web_fetch to read a page."_q,
++			Schema(QJsonObject{
++				{ u"query"_q, Property(u"string"_q) },
++			}, { u"query"_q }),
++		});
++		result.push_back({
++			u"web_fetch"_q,
++			u"Download a web page by its http(s) url and return its "
++			"readable text (trimmed)."_q,
++			Schema(QJsonObject{
++				{ u"url"_q, Property(u"string"_q) },
++			}, { u"url"_q }),
++		});
+ 	}
+ 	if (AllowChatActions()) {
+ 		result.push_back({
+@@ -393,9 +724,18 @@ QString SystemPrompt(const QString &accountName) {
+ 				"sent. Send only what they asked for and don't repeat a send "
+ 				"they declined."_q);
+ 	}
++	if (read) {
++		lines.push_back(u"Photos in chats are marked [photo], voice and "
++			"round video messages [voice message] and [round video message]. "
++			"Look at photos with view_photo and transcribe voice and round "
++			"video messages with transcribe_voice before you answer about "
++			"them."_q);
++	}
++	lines.push_back(u"You can translate messages yourself, no tool is "
++		"needed for that."_q);
+ 	lines.push_back(u"Format answers with simple Markdown: **bold**, "
+-		"*italic*, `code`, lists with \"- \". In messages you send to chats "
+-		"the same markup becomes real Telegram formatting."_q);
++		"*italic*, `code`, lists with \"- \". In messages you send or draft "
++		"in chats the same markup becomes real Telegram formatting."_q);
+ 	return lines.join('\n');
+ }
+ 
+@@ -403,6 +743,8 @@ Tools::Tools(not_null<Main::Session*> session)
+ : _session(session) {
+ }
+ 
++Tools::~Tools() = default;
++
+ void Tools::execute(
+ 		const ToolCall &call,
+ 		Confirm confirm,
+@@ -425,6 +767,18 @@ void Tools::execute(
+ 		sendMessage(args, true, std::move(confirm), std::move(done));
+ 	} else if (name == u"remind"_q) {
+ 		remind(args, std::move(done));
++	} else if ((name == u"view_photo"_q) && read) {
++		viewPhoto(args, std::move(done));
++	} else if ((name == u"transcribe_voice"_q) && read) {
++		transcribeVoice(args, std::move(done));
++	} else if ((name == u"draft_reply"_q) && (read || send)) {
++		draftReply(args, std::move(done));
++	} else if ((name == u"forward_messages"_q) && AllowForward()) {
++		forwardMessages(args, std::move(done));
++	} else if ((name == u"web_search"_q) && LocalWeb()) {
++		webSearch(args, std::move(done));
++	} else if ((name == u"web_fetch"_q) && LocalWeb()) {
++		webFetch(args, std::move(done));
+ 	} else if (AllowChatActions()
+ 		&& ((name == u"mark_read"_q)
+ 			|| (name == u"mark_unread"_q)
+@@ -826,4 +1180,435 @@ void Tools::chatAction(
+ 	}
+ }
+ 
++void Tools::viewPhoto(const QJsonObject &args, Fn<void(ToolOutcome)> done) {
++	const auto peer = PeerFromArgs(_session, args);
++	const auto id = MessageIdFromArgs(args);
++	if (!peer || !id) {
++		done(Error(u"chat_id and message_id are required."_q));
++		return;
++	}
++	const auto weak = base::make_weak(this);
++	WithItem(_session, peer, id, [=](HistoryItem *item) {
++		if (!weak) {
++			return;
++		} else if (!item) {
++			done(Error(u"Message not found."_q));
++			return;
++		}
++		const auto media = item->media();
++		const auto photo = (media && !media->webpage())
++			? media->photo()
++			: nullptr;
++		if (!photo) {
++			done(Error(u"This message has no photo."_q));
++			return;
++		}
++		auto content = u"Photo from message #%1."_q.arg(id.bare);
++		const auto caption = item->originalText().text.trimmed();
++		if (!caption.isEmpty()) {
++			content += u" Caption: "_q + caption;
++		}
++		const auto wait = _lifetime.make_state<PhotoWait>();
++		wait->view = photo->createMediaView();
++		wait->view->wanted(Data::PhotoSize::Large, item->fullId());
++		const auto check = [=](bool timeout) {
++			const auto large = wait->view
++				? wait->view->image(Data::PhotoSize::Large)
++				: nullptr;
++			if (!large && !timeout) {
++				return;
++			}
++			auto encoded = large ? EncodePhoto(large->original()) : Image();
++			wait->view = nullptr;
++			wait->lifetime.destroy();
++			if (encoded.base64.isEmpty()) {
++				done(Error(u"The photo did not load."_q));
++				return;
++			}
++			auto outcome = ToolOutcome{
++				.content = content,
++				.title = Tr(u"Looked at the photo"_q),
++			};
++			outcome.images.push_back(std::move(encoded));
++			done(std::move(outcome));
++		};
++		if (wait->view->image(Data::PhotoSize::Large)) {
++			check(false);
++			return;
++		}
++		rpl::merge(
++			_session->downloaderTaskFinished() | rpl::map_to(false),
++			base::timer_once(kPhotoTimeout) | rpl::map_to(true)
++		) | rpl::start_with_next(check, wait->lifetime);
++	});
++}
++
++void Tools::transcribeVoice(
++		const QJsonObject &args,
++		Fn<void(ToolOutcome)> done) {
++	const auto peer = PeerFromArgs(_session, args);
++	const auto id = MessageIdFromArgs(args);
++	if (!peer || !id) {
++		done(Error(u"chat_id and message_id are required."_q));
++		return;
++	}
++	const auto weak = base::make_weak(this);
++	const auto session = _session;
++	WithItem(_session, peer, id, [=](HistoryItem *item) {
++		if (!weak) {
++			return;
++		} else if (!item) {
++			done(Error(u"Message not found."_q));
++			return;
++		}
++		const auto media = item->media();
++		const auto document = media ? media->document() : nullptr;
++		if (!document
++			|| !(document->isVoiceMessage() || document->isVideoMessage())) {
++			done(Error(u"This is not a voice or round video message."_q));
++			return;
++		}
++		const auto result = [=](not_null<HistoryItem*> target)
++		-> std::optional<ToolOutcome> {
++			const auto &entry = session->api().transcribes().entry(target);
++			if (entry.failed) {
++				return Error(entry.toolong
++					? u"The message is too long to transcribe."_q
++					: u"Telegram could not transcribe it. Speech recognition "
++						"needs Telegram Premium or a free trial."_q);
++			} else if (entry.requestId || entry.pending) {
++				return std::nullopt;
++			} else if (!entry.result.isEmpty()) {
++				return ToolOutcome{
++					.content = entry.result,
++					.title = Tr(u"Transcribed a voice message"_q),
++				};
++			} else if (entry.shown) {
++				return Error(u"Nothing was recognized in this message."_q);
++			}
++			return std::nullopt;
++		};
++		if (auto ready = result(item)) {
++			done(std::move(*ready));
++			return;
++		}
++		auto &transcribes = session->api().transcribes();
++		const auto &entry = transcribes.entry(item);
++		if (!entry.requestId && !entry.pending) {
++			transcribes.toggle(item);
++			if (!transcribes.entry(item).requestId) {
++				done(Error(u"Telegram can't transcribe this message."_q));
++				return;
++			}
++		}
++		const auto fullId = item->fullId();
++		const auto started = crl::now();
++		const auto wait = _lifetime.make_state<rpl::lifetime>();
++		base::timer_each(kTranscribePoll) | rpl::start_with_next([=] {
++			const auto current = session->data().message(fullId);
++			auto ready = current
++				? result(current)
++				: std::make_optional(Error(u"Message not found."_q));
++			if (!ready && (crl::now() - started > kTranscribeTimeout)) {
++				ready = Error(u"Telegram did not transcribe it in time."_q);
++			}
++			if (ready) {
++				wait->destroy();
++				done(std::move(*ready));
++			}
++		}, *wait);
++	});
++}
++
++void Tools::draftReply(const QJsonObject &args, Fn<void(ToolOutcome)> done) {
++	const auto peer = PeerFromArgs(_session, args);
++	if (!peer) {
++		done(Error(u"Unknown chat_id."_q));
++		return;
++	}
++	const auto text = args.value(u"text"_q).toString();
++	Core::App().materializeLocalDrafts();
++	Data::SetChatLinkDraft(
++		peer,
++		TextUtilities::ParseEntities(text, TextParseMarkdown));
++	const auto title = Title(peer);
++	done({
++		.content = u"The draft is in the input field of \"%1\". The user "
++			"will send it."_q.arg(title),
++		.title = Tr(u"Drafted a reply in %1"_q).arg(title),
++	});
++}
++
++void Tools::forwardMessages(
++		const QJsonObject &args,
++		Fn<void(ToolOutcome)> done) {
++	const auto from = PeerFromArgs(_session, args, u"from_chat_id"_q);
++	const auto to = PeerFromArgs(_session, args, u"to_chat_id"_q);
++	auto ids = std::vector<MsgId>();
++	for (const auto &value : args.value(u"message_ids"_q).toArray()) {
++		const auto id = MsgId(qint64(value.toDouble()));
++		if (value.isDouble() && (id > 0) && !ranges::contains(ids, id)) {
++			ids.push_back(id);
++		}
++		if (int(ids.size()) >= kMaxForward) {
++			break;
++		}
++	}
++	if (!from || !to) {
++		done(Error(u"from_chat_id and to_chat_id are required."_q));
++		return;
++	} else if (ids.empty()) {
++		done(Error(u"No message_ids."_q));
++		return;
++	}
++	const auto weak = base::make_weak(this);
++	const auto session = _session;
++	const auto finish = [=] {
++		if (!weak) {
++			return;
++		}
++		auto items = HistoryItemsList();
++		for (const auto &id : ids) {
++			const auto item = session->data().message(from->id, id);
++			if (item && item->allowsForward()) {
++				items.push_back(item);
++			}
++		}
++		if (items.empty()) {
++			done(Error(u"These messages were not found or can't be "
++				"forwarded."_q));
++			return;
++		}
++		ranges::sort(items, [](auto a, auto b) {
++			return a->id < b->id;
++		});
++		const auto count = int(items.size());
++		const auto title = Title(to);
++		session->api().forwardMessages(
++			Data::ResolvedForwardDraft{ .items = std::move(items) },
++			Api::SendAction(session->data().history(to)));
++		done({
++			.content = u"Forwarded %1 to \"%2\"."_q.arg(
++				QString::number(count),
++				title),
++			.title = Tr(u"Forwarded to %1"_q).arg(title),
++		});
++	};
++	auto missing = std::vector<MsgId>();
++	for (const auto &id : ids) {
++		if (!session->data().message(from->id, id)) {
++			missing.push_back(id);
++		}
++	}
++	if (missing.empty()) {
++		finish();
++		return;
++	}
++	const auto left = std::make_shared<int>(int(missing.size()));
++	for (const auto &id : missing) {
++		session->api().requestMessageData(from, id, [=] {
++			if (!--*left) {
++				finish();
++			}
++		});
++	}
++}
++
++void Tools::webSearch(const QJsonObject &args, Fn<void(ToolOutcome)> done) {
++	const auto query = args.value(u"query"_q).toString().trimmed();
++	if (query.isEmpty()) {
++		done(Error(u"Empty query."_q));
++		return;
++	}
++	const auto title = Tr(u"Searched the web for \"%1\""_q).arg(query);
++	const auto url = QUrl(u"https://html.duckduckgo.com/html/?q="_q
++		+ QString::fromLatin1(QUrl::toPercentEncoding(query))
++		+ u"&kl=ru-ru"_q);
++	fetch(url, kMaxSearchBytes, [=](Fetched fetched) {
++		if (!fetched.error.isEmpty()) {
++			done({
++				.content = u"Search failed: "_q + fetched.error,
++				.title = title,
++				.isError = true,
++			});
++			return;
++		}
++		static const auto links = QRegularExpression(
++			u"<a[^>]*class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>"
++			"(.*?)</a>"_q,
++			QRegularExpression::DotMatchesEverythingOption);
++		static const auto snippets = QRegularExpression(
++			u"class=\"result__snippet\"[^>]*>(.*?)</a>"_q,
++			QRegularExpression::DotMatchesEverythingOption);
++		const auto html = QString::fromUtf8(fetched.body);
++		auto texts = QStringList();
++		auto snippetMatches = snippets.globalMatch(html);
++		while (snippetMatches.hasNext()) {
++			texts.push_back(PlainText(snippetMatches.next().captured(1)));
++		}
++		auto entries = QStringList();
++		auto index = 0;
++		auto linkMatches = links.globalMatch(html);
++		while (linkMatches.hasNext() && (index < kSearchResults)) {
++			const auto match = linkMatches.next();
++			const auto snippet = (index < texts.size())
++				? texts[index]
++				: QString();
++			++index;
++			auto href = DecodeEntities(match.captured(1));
++			if (href.startsWith(u"//"_q)) {
++				href = u"https:"_q + href;
++			}
++			const auto target = QUrlQuery(QUrl(href)).queryItemValue(
++				u"uddg"_q,
++				QUrl::FullyDecoded);
++			if (!target.isEmpty()) {
++				href = target;
++			}
++			if (href.contains(u"duckduckgo.com/y.js"_q)) {
++				continue;
++			}
++			auto entry = u"%1. %2\n%3"_q.arg(
++				QString::number(entries.size() + 1),
++				PlainText(match.captured(2)),
++				href);
++			if (!snippet.isEmpty()) {
++				entry += u"\n"_q + snippet;
++			}
++			entries.push_back(entry);
++		}
++		done({
++			.content = entries.isEmpty()
++				? u"Nothing found for \"%1\"."_q.arg(query)
++				: entries.join(u"\n\n"_q),
++			.title = title,
++		});
++	});
++}
++
++void Tools::webFetch(const QJsonObject &args, Fn<void(ToolOutcome)> done) {
++	const auto url = QUrl(args.value(u"url"_q).toString().trimmed());
++	const auto scheme = url.scheme().toLower();
++	const auto host = url.host();
++	if (!url.isValid()
++		|| host.isEmpty()
++		|| ((scheme != u"http"_q) && (scheme != u"https"_q))) {
++		done(Error(u"An http(s) link is required."_q));
++		return;
++	} else if (IsLocalHost(host)) {
++		done(Error(u"Local addresses can't be opened."_q));
++		return;
++	}
++	const auto title = Tr(u"Read %1"_q).arg(host);
++	fetch(url, kMaxPageBytes, [=](Fetched fetched) {
++		if (!fetched.error.isEmpty()) {
++			done({
++				.content = u"Could not open: "_q + fetched.error,
++				.title = title,
++				.isError = true,
++			});
++			return;
++		}
++		const auto type = fetched.contentType.toLower();
++		auto text = QString();
++		if (type.contains(u"html"_q)
++			|| fetched.body.left(4096).toLower().contains("<html")) {
++			text = HtmlToText(QString::fromUtf8(fetched.body));
++		} else if (type.isEmpty()
++			|| type.startsWith(u"text/"_q)
++			|| type.contains(u"json"_q)
++			|| type.contains(u"xml"_q)) {
++			text = QString::fromUtf8(fetched.body).trimmed();
++		} else {
++			done({
++				.content = u"This is not a text page (%1)."_q.arg(type),
++				.title = title,
++				.isError = true,
++			});
++			return;
++		}
++		if (text.size() > kMaxPageText) {
++			text = text.left(kMaxPageText)
++				+ u"\n"_q
++				+ QChar(0x2026)
++				+ u"truncated."_q;
++		}
++		done({
++			.content = text.isEmpty() ? u"The page is empty."_q : text,
++			.title = title,
++		});
++	});
++}
++
++void Tools::fetch(const QUrl &url, int limit, Fn<void(Fetched)> done) {
++	if (OfflineForLaunch()) {
++		done({ .error = u"mad was started offline."_q });
++		return;
++	}
++	if (!_network) {
++		_network = std::make_unique<QNetworkAccessManager>();
++	}
++	auto request = QNetworkRequest(url);
++	request.setRawHeader(
++		"User-Agent",
++		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
++		"(KHTML, like Gecko) Chrome/131.0 Safari/537.36");
++	request.setRawHeader("Accept-Language", "ru,en;q=0.8");
++	request.setTransferTimeout(kWebTimeout);
++	request.setAttribute(
++		QNetworkRequest::RedirectPolicyAttribute,
++		QNetworkRequest::UserVerifiedRedirectPolicy);
++	struct State {
++		QByteArray body;
++		bool truncated = false;
++		bool blocked = false;
++	};
++	const auto state = std::make_shared<State>();
++	const auto reply = _network->get(request);
++	const auto weak = base::make_weak(this);
++	QObject::connect(reply, &QNetworkReply::redirected, reply, [=](
++			const QUrl &target) {
++		const auto scheme = target.scheme().toLower();
++		if (((scheme == u"http"_q) || (scheme == u"https"_q))
++			&& !IsLocalHost(target.host())) {
++			Q_EMIT reply->redirectAllowed();
++		} else {
++			state->blocked = true;
++			reply->abort();
++		}
++	});
++	QObject::connect(reply, &QNetworkReply::readyRead, reply, [=] {
++		if (state->truncated) {
++			return;
++		}
++		state->body.append(reply->readAll());
++		if (state->body.size() > limit) {
++			state->body.truncate(limit);
++			state->truncated = true;
++			reply->abort();
++		}
++	});
++	QObject::connect(reply, &QNetworkReply::finished, reply, [=] {
++		reply->deleteLater();
++		if (!weak) {
++			return;
++		}
++		if (!state->truncated) {
++			state->body.append(reply->readAll());
++		}
++		auto result = Fetched{
++			.body = state->body.left(limit),
++			.contentType = reply->header(
++				QNetworkRequest::ContentTypeHeader).toString(),
++		};
++		if (state->blocked) {
++			result.error = u"It redirects to a local address."_q;
++		} else if (!state->truncated
++			&& (reply->error() != QNetworkReply::NoError)) {
++			result.error = reply->errorString();
++		}
++		done(std::move(result));
++	});
++}
++
+ } // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.h b/Telegram/SourceFiles/tele/agent/agent_tools.h
+index 87330655830f9d3b8fb9b0560808c205cd0412dc..5744a57b79c6ac36e4b789195b33d8b972fc02aa 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_tools.h
++++ b/Telegram/SourceFiles/tele/agent/agent_tools.h
+@@ -3,6 +3,9 @@
+ #include "base/weak_ptr.h"
+ #include "tele/agent/agent_protocol.h"
+ 
++class QNetworkAccessManager;
++class QUrl;
++
+ namespace Main {
+ class Session;
+ } // namespace Main
+@@ -13,6 +16,7 @@ struct ToolOutcome {
+ 	QString content;
+ 	QString title;
+ 	bool isError = false;
++	std::vector<Image> images;
+ };
+ 
+ struct Confirmation {
+@@ -30,6 +34,7 @@ using Confirm = Fn<void(Confirmation, Fn<void(bool)>)>;
+ class Tools final : public base::has_weak_ptr {
+ public:
+ 	explicit Tools(not_null<Main::Session*> session);
++	~Tools();
+ 
+ 	void execute(
+ 		const ToolCall &call,
+@@ -37,6 +42,12 @@ public:
+ 		Fn<void(ToolOutcome)> done);
+ 
+ private:
++	struct Fetched {
++		QByteArray body;
++		QString contentType;
++		QString error;
++	};
++
+ 	void listChats(const QJsonObject &args, Fn<void(ToolOutcome)> done);
+ 	void searchChats(const QJsonObject &args, Fn<void(ToolOutcome)> done);
+ 	void readChat(const QJsonObject &args, Fn<void(ToolOutcome)> done);
+@@ -53,8 +64,21 @@ private:
+ 		const QString &name,
+ 		const QJsonObject &args,
+ 		Fn<void(ToolOutcome)> done);
++	void viewPhoto(const QJsonObject &args, Fn<void(ToolOutcome)> done);
++	void transcribeVoice(
++		const QJsonObject &args,
++		Fn<void(ToolOutcome)> done);
++	void draftReply(const QJsonObject &args, Fn<void(ToolOutcome)> done);
++	void forwardMessages(
++		const QJsonObject &args,
++		Fn<void(ToolOutcome)> done);
++	void webSearch(const QJsonObject &args, Fn<void(ToolOutcome)> done);
++	void webFetch(const QJsonObject &args, Fn<void(ToolOutcome)> done);
++	void fetch(const QUrl &url, int limit, Fn<void(Fetched)> done);
+ 
+ 	const not_null<Main::Session*> _session;
++	std::unique_ptr<QNetworkAccessManager> _network;
++	rpl::lifetime _lifetime;
+ 
+ };
+ 
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index 9c2f8126d1b3f9939083429840185cd0d773d88b..f1d402f4be6233889928f75e9b5288efe5760554 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -23,6 +23,7 @@ const char kOptionAgentSend[] = "tele-agent-send";
+ const char kOptionAgentSendUnconfirmed[] = "tele-agent-send-unconfirmed";
+ const char kOptionAgentWebSearch[] = "tele-agent-web-search";
+ const char kOptionAgentChatActions[] = "tele-agent-chat-actions";
++const char kOptionAgentForward[] = "tele-agent-forward";
+ 
+ 
+ const char kOptionHideStories[] = "tele-hide-stories";
+@@ -850,7 +851,8 @@ base::options::toggle AgentSendUnconfirmedOption({
+ base::options::toggle AgentWebSearchOption({
+ 	.id = kOptionAgentWebSearch,
+ 	.name = "Web search",
+-	.description = "Anthropic's agent can search the web and read pages.",
++	.description = "With providers other than Anthropic, searches go to "
++		"DuckDuckGo from your computer.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -861,6 +863,12 @@ base::options::toggle AgentChatActionsOption({
+ 		"archive and pin them when you ask.",
+ });
+ 
++base::options::toggle AgentForwardOption({
++	.id = kOptionAgentForward,
++	.name = "Forward messages",
++	.description = "Forwards go at once, without a confirmation card.",
++});
++
+ base::options::toggle SmoothScrollOption({
+ 	.id = kOptionSmoothScroll,
+ 	.name = "Smooth wheel scrolling",
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index e8aeea3e1ed04c93a5ea683bc6ce41781df31f00..772c77a697c54c91a1aa9338f31bf47df22f89b1 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -19,6 +19,7 @@ extern const char kOptionAgentSend[];
+ extern const char kOptionAgentSendUnconfirmed[];
+ extern const char kOptionAgentWebSearch[];
+ extern const char kOptionAgentChatActions[];
++extern const char kOptionAgentForward[];
+ [[nodiscard]] bool MadBadgesEnabled();
+ 
+ extern const char kOptionHideStories[];
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index b1dc8cdaabfa2da32fcaa1c77664504a8e2eab41..27f8efbc896362e0cdd94a4ee02d6d777f09cd51 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -304,6 +304,7 @@ struct Spec {
+ 		Toggle(kOptionAgentSendUnconfirmed),
+ 		Toggle(kOptionAgentWebSearch),
+ 		Toggle(kOptionAgentChatActions),
++		Toggle(kOptionAgentForward),
+ 		Toggle(kOptionHideForeignAgent),
+ 		Toggle(kOptionHideBirthdays),
+ 		Toggle(kOptionSilentByDefault),
