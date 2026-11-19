@@ -1,0 +1,313 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:23:32 +0200
+Subject: [PATCH] feat: smooth jumps in chats
+
+---
+ Telegram/CMakeLists.txt                       |  2 ++
+ Telegram/Resources/langs/mad_ru.json          |  4 ++-
+ .../SourceFiles/history/history_widget.cpp    | 12 ++++++---
+ .../history/view/history_view_list_widget.cpp |  9 +++++--
+ .../SourceFiles/settings/settings_tele.cpp    |  4 +++
+ Telegram/SourceFiles/tele/tele_jump_plan.cpp  | 27 +++++++++++++++++++
+ Telegram/SourceFiles/tele/tele_jump_plan.h    | 12 +++++++++
+ Telegram/SourceFiles/tele/tele_options.cpp    | 15 +++++++++++
+ Telegram/SourceFiles/tele/tele_options.h      |  2 ++
+ .../SourceFiles/tele/tele_settings_io.cpp     |  1 +
+ .../tele/tests/mad_logic_tests.cpp            | 13 +++++++++
+ Telegram/cmake/mad_tests.cmake                |  1 +
+ 12 files changed, 96 insertions(+), 6 deletions(-)
+ create mode 100644 Telegram/SourceFiles/tele/tele_jump_plan.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_jump_plan.h
+
+diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
+index 9ca7aebe562f104482a27601114e2eaeabe9a9b2..87eff72449173e8bb0985eb52220a58c760b3f89 100644
+--- a/Telegram/CMakeLists.txt
++++ b/Telegram/CMakeLists.txt
+@@ -2670,6 +2670,8 @@ PRIVATE
+     tele/tele_foreign_agent.h
+     tele/tele_foreign_agent_ranges.cpp
+     tele/tele_foreign_agent_ranges.h
++    tele/tele_jump_plan.cpp
++    tele/tele_jump_plan.h
+     tele/tele_mad_names.cpp
+     tele/tele_mad_names.h
+     tele/tele_snippets.cpp
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 873ac51ad48fbcd0d55dd52532c156c9a708a7d8..de956403c3b574ecd1037c6a9aac1ab984d9ca70 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2157,5 +2157,7 @@
+   "Pinned messages stay in the chat menu. Single chats can still show the bar from their menu.": "Закреплённые сообщения остаются в меню чата. В отдельных чатах панель можно вернуть через их меню.",
+   "Pinned bar in chats": "Панель закрепа в чатах",
+   "Hide foreign agent labels": "Скрывать плашки иноагентов",
+-  "Removes the foreign agent disclaimers, Ministry of Justice footnotes and 18+ marks from messages and chat previews. Copying and forwarding keep the original text.": "Убирает «НАСТОЯЩИЙ МАТЕРИАЛ… ИНОСТРАННЫМ АГЕНТОМ», сноски про Минюст и «18+» из сообщений и превью в списке чатов. При копировании и пересылке текст остаётся как был."
++  "Removes the foreign agent disclaimers, Ministry of Justice footnotes and 18+ marks from messages and chat previews. Copying and forwarding keep the original text.": "Убирает «НАСТОЯЩИЙ МАТЕРИАЛ… ИНОСТРАННЫМ АГЕНТОМ», сноски про Минюст и «18+» из сообщений и превью в списке чатов. При копировании и пересылке текст остаётся как был.",
++  "Smooth jumps in chats": "Плавные прыжки по чату",
++  "Jumps to a reply, a pinned message or the bottom glide over up to three screens instead of one.": "Переход к ответу, закрепу или вниз чата плавно пролистывает до трёх экранов, а не один."
+ }
+diff --git a/Telegram/SourceFiles/history/history_widget.cpp b/Telegram/SourceFiles/history/history_widget.cpp
+index fc523795f66683e9aa844ab3c35e4b9d05d44d85..9b96a9c58f1d6a23751aa58101cd649211316021 100644
+--- a/Telegram/SourceFiles/history/history_widget.cpp
++++ b/Telegram/SourceFiles/history/history_widget.cpp
+@@ -208,6 +208,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "tele/tele_options.h"
+ #include "tele/tele_recover_forwarded.h"
+ #include "tele/tele_show_pinned.h"
++#include "tele/tele_jump_plan.h"
+ #include "media/audio/media_audio.h"
+ #include "media/audio/media_audio_capture.h"
+ #include "media/player/media_player_instance.h"
+@@ -2130,7 +2131,12 @@ void HistoryWidget::animatedScrollToY(
+ 	_scrollToAnimation.stop();
+ 	const auto itemId = attachTo->fullId();
+ 	const auto consumed = Tgw::ListScroll::Consumed(this);
+-	auto maxAnimatedDelta = _scroll->height();
++	const auto smooth = Tele::SmoothJumps();
++	const auto jump = Tele::PlanJump(
++		scrollTo - scrollTop,
++		_scroll->height(),
++		smooth);
++	auto maxAnimatedDelta = jump.limit;
+ 	auto transition = anim::sineInOut;
+ 	if (scrollTo > scrollTop + maxAnimatedDelta) {
+ 		scrollTop = scrollTo - maxAnimatedDelta;
+@@ -2160,8 +2166,8 @@ void HistoryWidget::animatedScrollToY(
+ 		[=] { scrollToAnimationCallback(itemId, relativeTo); },
+ 		relativeFrom,
+ 		relativeTo,
+-		st::slideDuration,
+-		anim::sineInOut);
++		jump.duration ? crl::time(jump.duration) : st::slideDuration,
++		smooth ? transition : anim::sineInOut);
+ }
+ 
+ void HistoryWidget::scrollToAnimationCallback(
+diff --git a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
+index 907e70a5d104a544dbda031f09ca1182cac7c42c..b345e8dfa77eda85c4ab8479817c5769192d7208 100644
+--- a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
++++ b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
+@@ -107,6 +107,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "tele/scripting/tele_script_chatui.h"
+ #include "tele/scripting/tele_script_local.h"
+ #include "tele/tele_ignored.h"
++#include "tele/tele_jump_plan.h"
+ #include "tele/tele_message_menu.h"
+ #include "tele/tele_options.h"
+ #include "tele/tele_deleted_reply.h"
+@@ -1578,7 +1579,11 @@ void ListWidget::computeScrollTo(
+ 		std::min(to, height() - currentScrollHeight),
+ 		0);
+ 	const auto fullDelta = (wanted - currentScrollTop);
+-	const auto limit = currentScrollHeight;
++	const auto jump = Tele::PlanJump(
++		fullDelta,
++		currentScrollHeight,
++		Tele::SmoothJumps());
++	const auto limit = jump.limit;
+ 	const auto scrollDelta = std::clamp(fullDelta, -limit, limit);
+ 	const auto type = (animated == anim::type::instant)
+ 		? AnimatedScroll::None
+@@ -1591,7 +1596,7 @@ void ListWidget::computeScrollTo(
+ 		scrollDelta,
+ 		type,
+ 		std::move(placement),
+-		duration);
++		duration ? duration : crl::time(jump.duration));
+ }
+ 
+ void ListWidget::checkUnreadBarCreation(bool markLastAsRead) {
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index d21fe018b857f6c803ed9b74ba170e78a96331a0..4aa4982f8d7adfd1c641fc0033b43e64ed43564a 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -2840,6 +2840,10 @@ void FillInterface(SectionBuilder &builder) {
+ 		builder,
+ 		::Tele::kOptionReduceMotion,
+ 		{ u"effects"_q, u"reactions"_q, u"power"_q, u"battery"_q });
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionSmoothJumps,
++		{ u"scroll"_q, u"jump"_q, u"reply"_q, u"animation"_q });
+ 	AddGroupDivider(builder);
+ 	AddGroupTitle(builder, u"Text"_q);
+ 	AddOptionToggle(builder, ::Tele::kOptionLowercase);
+diff --git a/Telegram/SourceFiles/tele/tele_jump_plan.cpp b/Telegram/SourceFiles/tele/tele_jump_plan.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..c882eca54afc1d66e4a87f1fed00b0b00d82bca2
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_jump_plan.cpp
+@@ -0,0 +1,27 @@
++#include "tele/tele_jump_plan.h"
++
++#include <algorithm>
++#include <cstdlib>
++
++namespace Tele {
++namespace {
++
++constexpr auto kScreens = 3;
++constexpr auto kShortest = 260;
++constexpr auto kExtra = 300;
++
++} // namespace
++
++JumpPlan PlanJump(int distance, int viewport, bool smooth) {
++	if (!smooth || viewport <= 0) {
++		return { viewport, 0 };
++	}
++	const auto limit = viewport * kScreens;
++	const auto animated = std::min(std::abs(distance), limit);
++	return {
++		limit,
++		kShortest + int((long long)(animated) * kExtra / limit),
++	};
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_jump_plan.h b/Telegram/SourceFiles/tele/tele_jump_plan.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..bb77c106ed2dadb003ac057d3b52da902c2a7016
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_jump_plan.h
+@@ -0,0 +1,12 @@
++#pragma once
++
++namespace Tele {
++
++struct JumpPlan {
++	int limit = 0;
++	int duration = 0;
++};
++
++[[nodiscard]] JumpPlan PlanJump(int distance, int viewport, bool smooth);
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index 38da570933cd32cff83d1ac1f2f9c22e215bfefd..f5c967be53dd5aabacbbf00c115a047f4c201ef3 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include "base/options.h"
+ #include "tele/tele_title_template.h"
++#include "ui/effects/animation_value.h"
+ 
+ namespace Tele {
+ 
+@@ -75,6 +76,7 @@ const char kOptionReduceMotion[] = "tele-reduce-motion";
+ const char kOptionReduceMotionSaved[] = "tele-reduce-motion-saved";
+ const char kOptionListKeys[] = "tele-list-keys";
+ const char kOptionSmoothScroll[] = "tele-smooth-scroll";
++const char kOptionSmoothJumps[] = "tele-smooth-jumps";
+ const char kOptionSmoothTyping[] = "tele-smooth-typing";
+ const char kOptionSmoothTypingSpeed[] = "tele-smooth-typing-speed";
+ const char kOptionScrollStats[] = "tele-scroll-stats";
+@@ -719,6 +721,13 @@ base::options::toggle ListKeysOption({
+ 		"sections, and a click just outside a box doesn't close it.",
+ });
+ 
++base::options::toggle SmoothJumpsOption({
++	.id = kOptionSmoothJumps,
++	.name = "Smooth jumps in chats",
++	.description = "Jumps to a reply, a pinned message or the bottom glide "
++		"over up to three screens instead of one.",
++});
++
+ base::options::toggle SmoothScrollOption({
+ 	.id = kOptionSmoothScroll,
+ 	.name = "Smooth wheel scrolling",
+@@ -2621,6 +2630,12 @@ bool ReduceMotion() {
+ 	return ReduceMotionOption.value();
+ }
+ 
++bool SmoothJumps() {
++	return SmoothJumpsOption.value()
++		&& !ReduceMotionOption.value()
++		&& !anim::Disabled();
++}
++
+ rpl::producer<> ReduceMotionChanges() {
+ 	return ReduceMotionOption.changes();
+ }
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index 26e6cdf670e27d956f31f3a4551b3210de38e852..7245934b4673db31d0351bb549e38b04b21e3c0f 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -64,6 +64,7 @@ extern const char kOptionStaticUserpicsList[];
+ extern const char kOptionHideListPreviews[];
+ extern const char kOptionChatListNoReorderAnimation[];
+ extern const char kOptionReduceMotion[];
++extern const char kOptionSmoothJumps[];
+ extern const char kOptionReduceMotionSaved[];
+ extern const char kOptionListKeys[];
+ extern const char kOptionSmoothScroll[];
+@@ -391,6 +392,7 @@ void SetLinkPreviews(const QString &value);
+ [[nodiscard]] rpl::producer<> HideListPreviewsChanges();
+ [[nodiscard]] bool ChatListNoReorderAnimation();
+ [[nodiscard]] bool ReduceMotion();
++[[nodiscard]] bool SmoothJumps();
+ [[nodiscard]] rpl::producer<> ReduceMotionChanges();
+ [[nodiscard]] QString ReduceMotionSaved();
+ void SetReduceMotionSaved(const QString &value);
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index 478af7a0accac883d7adc81d379ac44e6c6d73c3..27c78b35c969df91fac8fd5afede2f56c21189b0 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -293,6 +293,7 @@ struct Spec {
+ 		Choice(kOptionComposerIndentation, { u"2"_q, u"4"_q, u"tab"_q }),
+ 		Toggle(kOptionHideGiftButton),
+ 		Toggle(kOptionHideRecordButton),
++		Toggle(kOptionSmoothJumps),
+ 		Toggle(kOptionHideForeignAgent),
+ 		Toggle(kOptionHideBirthdays),
+ 		Toggle(kOptionSilentByDefault),
+diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+index 558a49c78f667488f1a1e4c058a1da50007ec85b..05507e0bb373ead979f4b81ea1184d3d174d12fd 100644
+--- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
++++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+@@ -2,6 +2,7 @@
+ #include "tele/tele_wav_music.h"
+ #include "tele/tele_pinned_bar_rules.h"
+ #include "tele/tele_foreign_agent_ranges.h"
++#include "tele/tele_jump_plan.h"
+ 
+ #include <cstdio>
+ #include <cstdlib>
+@@ -72,6 +73,17 @@ void TestForeignAgent() {
+ 	Require(Stripped(QStringLiteral("18+")).trimmed().isEmpty(), "only the age mark");
+ }
+ 
++void TestJumpPlan() {
++	using Tele::PlanJump;
++	const auto off = PlanJump(5000, 600, false);
++	Require(off.limit == 600 && off.duration == 0, "stock jump");
++	const auto near = PlanJump(-300, 600, true);
++	Require(near.limit == 1800 && near.duration == 310, "near jump");
++	const auto far = PlanJump(100000, 600, true);
++	Require(far.limit == 1800 && far.duration == 560, "far jump");
++	Require(PlanJump(100, 0, true).duration == 0, "no viewport");
++}
++
+ } // namespace
+ 
+ int main() {
+@@ -79,5 +91,6 @@ int main() {
+ 	TestWavFiles();
+ 	TestPinnedBarRules();
+ 	TestForeignAgent();
++	TestJumpPlan();
+ 	return 0;
+ }
+diff --git a/Telegram/cmake/mad_tests.cmake b/Telegram/cmake/mad_tests.cmake
+index 385ad4d2dff958f4f8560c109a2a8da7b267ca1d..3e76b4ac44b4a6defb828dc721376f0d00a81db4 100644
+--- a/Telegram/cmake/mad_tests.cmake
++++ b/Telegram/cmake/mad_tests.cmake
+@@ -48,6 +48,7 @@ target_sources(mad_logic_tests PRIVATE
+     ${src_loc}/tele/tele_wav_music.cpp
+     ${src_loc}/tele/tele_pinned_bar_rules.cpp
+     ${src_loc}/tele/tele_foreign_agent_ranges.cpp
++    ${src_loc}/tele/tele_jump_plan.cpp
+     ${src_loc}/tele/tests/mad_logic_tests.cpp
+ )
+ target_link_libraries(mad_logic_tests PRIVATE
