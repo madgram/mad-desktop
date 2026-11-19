@@ -84,7 +84,7 @@ def main():
         result = subprocess.CompletedProcess([], 0)
     if result.returncode:
         return result.returncode
-    targets = ["mad_registry_tests", "mad_history_crypto_tests", "mad_links_tests"] if args.tests else ["Telegram"]
+    targets = ["mad_registry_tests", "mad_history_crypto_tests", "mad_links_tests", "mad_logic_tests"] if args.tests else ["Telegram"]
     command = [cmake, "--build", build, "--config", args.config, "--target", *targets, "--parallel", args.jobs]
     if not args.launcher:
         command += ["--", f"/p:CL_MPCount={args.jobs}"]
