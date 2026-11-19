@@ -1,0 +1,1235 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:40:36 +0200
+Subject: [PATCH] feat: accounts linked in mad show up in profiles
+
+---
+ Telegram/CMakeLists.txt                       |   4 +
+ Telegram/Resources/langs/mad_ru.json          |  19 +-
+ .../info/profile/info_profile_actions.cpp     |   4 +
+ .../SourceFiles/settings/settings_tele.cpp    |  23 +
+ .../SourceFiles/tele/tele_linked_accounts.cpp | 641 ++++++++++++++++++
+ .../SourceFiles/tele/tele_linked_accounts.h   |  25 +
+ .../tele/tele_linked_accounts_data.cpp        | 141 ++++
+ .../tele/tele_linked_accounts_data.h          |  38 ++
+ .../SourceFiles/tele/tele_mad_link_parser.cpp |   2 +-
+ Telegram/SourceFiles/tele/tele_mad_links.cpp  |  13 +
+ Telegram/SourceFiles/tele/tele_options.cpp    |  33 +
+ Telegram/SourceFiles/tele/tele_options.h      |   5 +
+ .../SourceFiles/tele/tele_settings_io.cpp     |   2 +
+ .../tele/tests/mad_links_tests.cpp            |   3 +-
+ .../tele/tests/mad_logic_tests.cpp            |  23 +
+ Telegram/cmake/mad_tests.cmake                |   1 +
+ 16 files changed, 974 insertions(+), 3 deletions(-)
+ create mode 100644 Telegram/SourceFiles/tele/tele_linked_accounts.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_linked_accounts.h
+ create mode 100644 Telegram/SourceFiles/tele/tele_linked_accounts_data.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_linked_accounts_data.h
+
+diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
+index 3b39373ec179563b90542bda3c2008fa52ca8e4e..59e23b8f323aa16ead4dd3ae1acb8b4c6dfc4cf4 100644
+--- a/Telegram/CMakeLists.txt
++++ b/Telegram/CMakeLists.txt
+@@ -2676,6 +2676,10 @@ PRIVATE
+     tele/tele_incoming_fade.h
+     tele/tele_crossfade.cpp
+     tele/tele_crossfade.h
++    tele/tele_linked_accounts.cpp
++    tele/tele_linked_accounts.h
++    tele/tele_linked_accounts_data.cpp
++    tele/tele_linked_accounts_data.h
+     tele/tele_mad_names.cpp
+     tele/tele_mad_names.h
+     tele/tele_snippets.cpp
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 8e75c275554235d9b012a66a7c7e9311cbbaa6ee..054e309644b6e3ca834b8740b4bebde6a2746557 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2226,5 +2226,22 @@
+   "Buttons": "Кнопки",
+   "Inline bots": "Инлайн-боты",
+   "Bot chats": "Чаты с ботами",
+-  "Mini apps": "Мини-приложения"
++  "Mini apps": "Мини-приложения",
++  "Accounts": "Аккаунты",
++  "Accounts in profiles": "Аккаунты в профилях",
++  "Shows the Steam, Spotify, Discord and other accounts people linked in mad in their profiles. Loaded from b.mad.tg.": "Показывает в профилях аккаунты Steam, Spotify, Discord и другие, которые люди привязали в mad. Загружаются с b.mad.tg.",
++  "Spotify Client ID": "Client ID для Spotify",
++  "Could not sign in to b.mad.tg.": "Не получилось войти на b.mad.tg.",
++  "Could not load your accounts.": "Не получилось загрузить твои аккаунты.",
++  "Could not unlink the account.": "Не получилось отвязать аккаунт.",
++  "hidden by moderators": "скрыт модераторами",
++  "Create an app on developer.spotify.com, add https://b.mad.tg/api/v1/connect/spotify/callback as its redirect URL and paste its Client ID here.": "Создай приложение на developer.spotify.com, добавь https://b.mad.tg/api/v1/connect/spotify/callback в его Redirect URI и вставь сюда его Client ID.",
++  "Your accounts": "Твои аккаунты",
++  "Nothing linked yet.": "Пока ничего не привязано.",
++  "Unlink %1?": "Отвязать %1?",
++  "Unlink": "Отвязать",
++  "Link an account": "Привязать аккаунт",
++  "Account linked.": "Аккаунт привязан.",
++  "Too many linked accounts.": "Привязано слишком много аккаунтов.",
++  "Could not link the account.": "Не получилось привязать аккаунт."
+ }
+diff --git a/Telegram/SourceFiles/info/profile/info_profile_actions.cpp b/Telegram/SourceFiles/info/profile/info_profile_actions.cpp
+index e6648ef92d0d95d265859df28ba61ca1c1d7b774..4e6624e75843c0a13c76afa68313da5bcdc97a78 100644
+--- a/Telegram/SourceFiles/info/profile/info_profile_actions.cpp
++++ b/Telegram/SourceFiles/info/profile/info_profile_actions.cpp
+@@ -79,6 +79,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "support/support_helper.h"
+ #include "tele/scripting/tele_script_hooks.h"
+ #include "tele/tele_account_age.h"
++#include "tele/tele_linked_accounts.h"
+ #include "tele/tele_mutual_contact.h"
+ #include "tele/tele_birthdays.h"
+ #include "tele/tele_chat_dates.h"
+@@ -1908,6 +1909,9 @@ Section DetailsFiller::makeInfo() {
+ 			Tele::Tr(u"Contact"_q),
+ 			Tele::MutualContactTextValue(_peer),
+ 			QString());
++		addInfoLine(
++			Tele::Tr(u"Accounts"_q),
++			Tele::LinkedAccountsTextValue(_peer));
+ 		Tele::Scripting::AddProfileRows(_peer, [&](
+ 				QString label,
+ 				rpl::producer<TextWithEntities> value,
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index b50373318692a3b81508b564d8d725e7a6c5cd7d..233339570d7c4ce73a8045f7d87612d186ff1fca 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -1,6 +1,7 @@
+ #include "settings/settings_tele.h"
+ #include "tele/tele_mad_links.h"
+ #include "tele/tele_mad_badges.h"
++#include "tele/tele_linked_accounts.h"
+ #include "tele/tele_history_sync.h"
+ #include "tele/tele_settings_widgets.h"
+ 
+@@ -4512,6 +4513,26 @@ void FillMadBadges(SectionBuilder &builder) {
+ 	AddGroupDivider(builder);
+ }
+ 
++void FillMadAccounts(SectionBuilder &builder) {
++	AddGroupTitle(builder, u"Accounts"_q);
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionLinkedAccounts,
++		{ u"steam"_q, u"spotify"_q, u"discord"_q, u"аккаунты"_q });
++	AddGroupDivider(builder);
++	if (Picked) {
++		return;
++	}
++	builder.add([&](const WidgetContext &ctx) {
++		auto layout = object_ptr<Ui::VerticalLayout>(ctx.container);
++		::Tele::SetupLinkedAccountsSettings(layout.data(), ctx.controller);
++		return SectionBuilder::WidgetToAdd{
++			.widget = std::move(layout),
++			.align = style::al_justify,
++		};
++	}, nullptr);
++}
++
+ void FillMadServer(SectionBuilder &builder) {
+ 	AddGroupTitle(builder, u"Encrypted history sync"_q);
+ 	AddButton(builder, {
+@@ -4602,6 +4623,8 @@ void FillRoot(SectionBuilder &builder) {
+ 	};
+ 	add(u"badges"_q, u"Badges"_q, st::menuIconStar,
+ 		{ u"mad"_q, u"бейджи"_q, u"значки"_q }, FillMadBadges);
++	add(u"accounts"_q, u"Accounts"_q, st::menuIconProfile,
++		{ u"steam"_q, u"spotify"_q, u"аккаунты"_q }, FillMadAccounts);
+ 	add(u"server"_q, u"Server"_q, st::menuIconLink,
+ 		{ u"aliases"_q, u"синхронизация"_q, u"алиасы"_q }, FillMadServer);
+ 	add(u"backup"_q, u"Backup and updates"_q, st::menuIconManage,
+diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..47b108c3c73299e3c21eb30ce228a8f4a657bda4
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_linked_accounts.cpp
+@@ -0,0 +1,641 @@
++#include "tele/tele_linked_accounts.h"
++
++#include "apiwrap.h"
++#include "base/weak_ptr.h"
++#include "core/application.h"
++#include "data/data_session.h"
++#include "data/data_user.h"
++#include "main/main_account.h"
++#include "main/main_domain.h"
++#include "main/main_session.h"
++#include "tele/tele_linked_accounts_data.h"
++#include "tele/tele_lowercase.h"
++#include "tele/tele_options.h"
++#include "ui/boxes/confirm_box.h"
++#include "ui/layers/generic_box.h"
++#include "ui/text/text_utilities.h"
++#include "ui/vertical_list.h"
++#include "ui/widgets/buttons.h"
++#include "ui/widgets/fields/input_field.h"
++#include "ui/widgets/labels.h"
++#include "ui/wrap/vertical_layout.h"
++#include "window/window_session_controller.h"
++#include "styles/style_boxes.h"
++#include "styles/style_layers.h"
++#include "styles/style_settings.h"
++
++#include <QtCore/QJsonDocument>
++#include <QtCore/QJsonObject>
++#include <QtCore/QUrlQuery>
++#include <QtGui/QDesktopServices>
++#include <QtNetwork/QNetworkAccessManager>
++#include <QtNetwork/QNetworkReply>
++#include <QtNetwork/QNetworkRequest>
++
++namespace Tele {
++namespace {
++
++constexpr auto kCacheFor = crl::time(10 * 60 * 1000);
++constexpr auto kMaxBytes = 256 * 1024;
++constexpr auto kBot = "maddtgbot";
++
++[[nodiscard]] QString Base() {
++	return u"https://b.mad.tg"_q;
++}
++
++struct Cached {
++	std::vector<LinkedAccount> accounts;
++	crl::time loaded = 0;
++	bool loading = false;
++};
++
++class Service final : public QObject, public base::has_weak_ptr {
++public:
++	explicit Service(not_null<Main::Session*> session);
++
++	[[nodiscard]] static Service &For(not_null<Main::Session*> session);
++
++	[[nodiscard]] const std::vector<LinkedAccount> &profile(UserId id);
++	[[nodiscard]] rpl::producer<UserId> profileUpdates() const;
++
++	void loadMine();
++	[[nodiscard]] const std::vector<LinkedAccount> &mine() const;
++	[[nodiscard]] const std::vector<LinkedPlatform> &platforms() const;
++	[[nodiscard]] QString error() const;
++	[[nodiscard]] bool busy() const;
++	[[nodiscard]] rpl::producer<> mineUpdates() const;
++
++	void remove(const QString &id);
++	void link(const QString &platform, const QString &clientId);
++	void invalidate();
++
++private:
++	using Done = Fn<void(int status, QByteArray body)>;
++
++	void withToken(Fn<void(QString)> done);
++	void authorize();
++	void requestWebView(not_null<UserData*> bot);
++	void finishAuthorize(const QString &token);
++	void request(
++		const QString &method,
++		const QString &path,
++		const QByteArray &body,
++		Done done);
++	void fetchProfile(UserId id);
++	void fetchPlatforms();
++	void setError(const QString &error);
++
++	const not_null<Main::Session*> _session;
++	QNetworkAccessManager _network;
++	QString _token;
++	bool _authorizing = false;
++	std::vector<Fn<void(QString)>> _tokenWaiters;
++	base::flat_map<UserId, Cached> _profiles;
++	rpl::event_stream<UserId> _profileUpdates;
++	std::vector<LinkedAccount> _mine;
++	std::vector<LinkedPlatform> _platforms;
++	QString _error;
++	int _busy = 0;
++	rpl::event_stream<> _mineUpdates;
++
++};
++
++[[nodiscard]] base::flat_map<
++		not_null<Main::Session*>,
++		std::unique_ptr<Service>> &Services() {
++	static auto result = base::flat_map<
++		not_null<Main::Session*>,
++		std::unique_ptr<Service>>();
++	return result;
++}
++
++Service::Service(not_null<Main::Session*> session)
++: _session(session) {
++}
++
++Service &Service::For(not_null<Main::Session*> session) {
++	auto &services = Services();
++	const auto i = services.find(session);
++	if (i != end(services)) {
++		return *i->second;
++	}
++	const auto result = services.emplace(
++		session,
++		std::make_unique<Service>(session)).first->second.get();
++	session->lifetime().add([=] {
++		Services().remove(session);
++	});
++	return *result;
++}
++
++void Service::request(
++		const QString &method,
++		const QString &path,
++		const QByteArray &body,
++		Done done) {
++	auto request = QNetworkRequest(QUrl(Base() + path));
++	request.setHeader(
++		QNetworkRequest::ContentTypeHeader,
++		u"application/json"_q);
++	request.setAttribute(
++		QNetworkRequest::RedirectPolicyAttribute,
++		QNetworkRequest::NoLessSafeRedirectPolicy);
++	request.setTransferTimeout(20000);
++	if (!_token.isEmpty()) {
++		request.setRawHeader("Authorization", "Bearer " + _token.toUtf8());
++	}
++	const auto reply = _network.sendCustomRequest(
++		request,
++		method.toLatin1(),
++		body);
++	QObject::connect(reply, &QNetworkReply::finished, this, [=] {
++		const auto bytes = reply->read(kMaxBytes);
++		const auto status = reply->attribute(
++			QNetworkRequest::HttpStatusCodeAttribute).toInt();
++		reply->deleteLater();
++		done(status, bytes);
++	});
++}
++
++void Service::withToken(Fn<void(QString)> done) {
++	if (!_token.isEmpty()) {
++		done(_token);
++		return;
++	}
++	_tokenWaiters.push_back(std::move(done));
++	if (!_authorizing) {
++		authorize();
++	}
++}
++
++void Service::authorize() {
++	_authorizing = true;
++	const auto name = QString::fromLatin1(kBot);
++	if (const auto peer = _session->data().peerByUsername(name)) {
++		if (const auto bot = peer->asUser()) {
++			requestWebView(bot);
++			return;
++		}
++	}
++	const auto weak = base::make_weak(this);
++	_session->api().request(MTPcontacts_ResolveUsername(
++		MTP_flags(0),
++		MTP_string(name),
++		MTP_string()
++	)).done([=](const MTPcontacts_ResolvedPeer &result) {
++		if (!weak) {
++			return;
++		}
++		const auto &data = result.data();
++		_session->data().processUsers(data.vusers());
++		_session->data().processChats(data.vchats());
++		const auto peer = _session->data().peerLoaded(
++			peerFromMTP(data.vpeer()));
++		if (const auto bot = peer ? peer->asUser() : nullptr) {
++			requestWebView(bot);
++		} else {
++			finishAuthorize(QString());
++		}
++	}).fail([=] {
++		if (weak) {
++			finishAuthorize(QString());
++		}
++	}).send();
++}
++
++void Service::requestWebView(not_null<UserData*> bot) {
++	const auto weak = base::make_weak(this);
++	_session->api().request(MTPmessages_RequestMainWebView(
++		MTP_flags(0),
++		bot->input(),
++		bot->inputUser(),
++		MTPstring(),
++		MTPDataJSON(),
++		MTP_string("tdesktop")
++	)).done([=](const MTPWebViewResult &result) {
++		if (!weak) {
++			return;
++		}
++		const auto initData = InitDataFromWebViewUrl(
++			qs(result.data().vurl()));
++		if (initData.isEmpty()) {
++			finishAuthorize(QString());
++			return;
++		}
++		const auto body = QJsonDocument(QJsonObject{
++			{ u"initData"_q, initData },
++		}).toJson(QJsonDocument::Compact);
++		request(u"POST"_q, u"/api/v1/auth/telegram"_q, body, [=](
++				int status,
++				QByteArray bytes) {
++			finishAuthorize((status == 200)
++				? ParseLinkedToken(bytes)
++				: QString());
++		});
++	}).fail([=] {
++		if (weak) {
++			finishAuthorize(QString());
++		}
++	}).send();
++}
++
++void Service::finishAuthorize(const QString &token) {
++	_authorizing = false;
++	_token = token;
++	if (token.isEmpty()) {
++		setError(Tr(u"Could not sign in to b.mad.tg."_q));
++	}
++	for (const auto &callback : base::take(_tokenWaiters)) {
++		callback(token);
++	}
++}
++
++const std::vector<LinkedAccount> &Service::profile(UserId id) {
++	auto &cached = _profiles[id];
++	if (!cached.loading
++		&& (!cached.loaded || crl::now() - cached.loaded > kCacheFor)) {
++		fetchProfile(id);
++	}
++	return _profiles[id].accounts;
++}
++
++rpl::producer<UserId> Service::profileUpdates() const {
++	return _profileUpdates.events();
++}
++
++[[nodiscard]] bool SameAccounts(
++		const std::vector<LinkedAccount> &a,
++		const std::vector<LinkedAccount> &b) {
++	if (a.size() != b.size()) {
++		return false;
++	}
++	for (auto i = 0; i != int(a.size()); ++i) {
++		if (a[i].id != b[i].id
++			|| a[i].displayName != b[i].displayName
++			|| a[i].handle != b[i].handle
++			|| a[i].url != b[i].url) {
++			return false;
++		}
++	}
++	return true;
++}
++
++void Service::fetchProfile(UserId id) {
++	_profiles[id].loading = true;
++	const auto weak = base::make_weak(this);
++	withToken([=](QString token) {
++		if (!weak) {
++			return;
++		}
++		if (token.isEmpty()) {
++			auto &cached = _profiles[id];
++			cached.loading = false;
++			cached.loaded = crl::now();
++			return;
++		}
++		const auto path = u"/api/v1/profiles/%1"_q.arg(id.bare);
++		request(u"GET"_q, path, QByteArray(), [=](
++				int status,
++				QByteArray bytes) {
++			if (status == 401) {
++				_token = QString();
++			}
++			auto &cached = _profiles[id];
++			cached.loading = false;
++			cached.loaded = crl::now();
++			if (status != 200) {
++				return;
++			}
++			auto accounts = ParseLinkedAccounts(bytes);
++			if (!SameAccounts(accounts, cached.accounts)) {
++				cached.accounts = std::move(accounts);
++				_profileUpdates.fire_copy(id);
++			}
++		});
++	});
++}
++
++void Service::loadMine() {
++	const auto weak = base::make_weak(this);
++	++_busy;
++	_error = QString();
++	_mineUpdates.fire({});
++	fetchPlatforms();
++	withToken([=](QString token) {
++		if (!weak) {
++			return;
++		}
++		if (token.isEmpty()) {
++			--_busy;
++			_mineUpdates.fire({});
++			return;
++		}
++		request(u"GET"_q, u"/api/v1/me/accounts"_q, QByteArray(), [=](
++				int status,
++				QByteArray bytes) {
++			--_busy;
++			if (status == 200) {
++				_mine = ParseLinkedAccounts(bytes);
++				_profiles.remove(_session->userId());
++			} else {
++				if (status == 401) {
++					_token = QString();
++				}
++				_error = Tr(u"Could not load your accounts."_q);
++			}
++			_mineUpdates.fire({});
++		});
++	});
++}
++
++void Service::fetchPlatforms() {
++	if (!_platforms.empty()) {
++		return;
++	}
++	request(u"GET"_q, u"/api/v1/platforms"_q, QByteArray(), [=](
++			int status,
++			QByteArray bytes) {
++		if (status == 200) {
++			_platforms = ParseLinkedPlatforms(bytes);
++			_mineUpdates.fire({});
++		}
++	});
++}
++
++const std::vector<LinkedAccount> &Service::mine() const {
++	return _mine;
++}
++
++const std::vector<LinkedPlatform> &Service::platforms() const {
++	return _platforms;
++}
++
++QString Service::error() const {
++	return _error;
++}
++
++bool Service::busy() const {
++	return _busy > 0;
++}
++
++rpl::producer<> Service::mineUpdates() const {
++	return _mineUpdates.events();
++}
++
++void Service::setError(const QString &error) {
++	_error = error;
++	_mineUpdates.fire({});
++}
++
++void Service::remove(const QString &id) {
++	const auto weak = base::make_weak(this);
++	withToken([=](QString token) {
++		if (!weak || token.isEmpty()) {
++			return;
++		}
++		const auto path = u"/api/v1/me/accounts/"_q
++			+ QString::fromLatin1(QUrl::toPercentEncoding(id));
++		request(u"DELETE"_q, path, QByteArray(), [=](
++				int status,
++				QByteArray) {
++			loadMine();
++			if (status != 204 && status != 404) {
++				setError(Tr(u"Could not unlink the account."_q));
++			}
++		});
++	});
++}
++
++void Service::link(const QString &platform, const QString &clientId) {
++	const auto weak = base::make_weak(this);
++	withToken([=](QString token) {
++		if (!weak || token.isEmpty()) {
++			return;
++		}
++		auto query = QUrlQuery();
++		query.addQueryItem(u"token"_q, token);
++		if (!clientId.isEmpty()) {
++			query.addQueryItem(u"client_id"_q, clientId);
++		}
++		auto url = QUrl(Base()
++			+ u"/api/v1/connect/"_q
++			+ QString::fromLatin1(QUrl::toPercentEncoding(platform))
++			+ u"/start"_q);
++		url.setQuery(query);
++		QDesktopServices::openUrl(url);
++	});
++}
++
++void Service::invalidate() {
++	_profiles.clear();
++	loadMine();
++}
++
++[[nodiscard]] QString AccountName(const LinkedAccount &account) {
++	return account.displayName.isEmpty()
++		? account.handle
++		: account.displayName;
++}
++
++[[nodiscard]] TextWithEntities AccountsText(
++		const std::vector<LinkedAccount> &accounts) {
++	auto result = TextWithEntities();
++	for (const auto &account : accounts) {
++		if (!result.empty()) {
++			result.append('\n');
++		}
++		const auto name = AccountName(account);
++		result.append(LinkedPlatformTitle(account.platform) + u": "_q);
++		result.append(account.url.isEmpty()
++			? TextWithEntities::Simple(name)
++			: Ui::Text::Link(name, account.url));
++	}
++	return result;
++}
++
++[[nodiscard]] QString AccountLine(const LinkedAccount &account) {
++	auto result = LinkedPlatformTitle(account.platform)
++		+ u" · "_q
++		+ AccountName(account);
++	if (account.hiddenByAdmin) {
++		result += u" · "_q + Tr(u"hidden by moderators"_q);
++	} else if (!account.visible) {
++		result += u" · "_q + Tr(u"hidden"_q);
++	}
++	return result;
++}
++
++void AskClientId(
++		not_null<Window::SessionController*> controller,
++		Fn<void(QString)> done) {
++	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
++		box->setTitle(rpl::single(u"Spotify"_q));
++		box->addRow(object_ptr<Ui::FlatLabel>(
++			box,
++			Tr(u"Create an app on developer.spotify.com, add "
++				"https://b.mad.tg/api/v1/connect/spotify/callback as its "
++				"redirect URL and paste its Client ID here."_q),
++			st::boxLabel));
++		const auto field = box->addRow(object_ptr<Ui::InputField>(
++			box,
++			st::defaultInputField,
++			rpl::single(u"Client ID"_q),
++			SpotifyClientId()));
++		const auto submit = [=] {
++			const auto value = field->getLastText().trimmed();
++			if (value.isEmpty()) {
++				field->showError();
++				return;
++			}
++			SetSpotifyClientId(value);
++			box->closeBox();
++			done(value);
++		};
++		field->submits() | rpl::on_next(submit, field->lifetime());
++		box->setFocusCallback([=] { field->setFocusFast(); });
++		box->addButton(rpl::single(Tr(u"Continue"_q)), submit);
++		box->addButton(rpl::single(Tr(u"Cancel"_q)), [=] {
++			box->closeBox();
++		});
++	}));
++}
++
++void Fill(
++		not_null<Ui::VerticalLayout*> content,
++		not_null<Window::SessionController*> controller) {
++	auto &service = Service::For(&controller->session());
++	const auto weak = base::make_weak(&service);
++	content->clear();
++	const auto status = service.busy()
++		? Tr(u"Loading…"_q)
++		: service.error();
++	if (!status.isEmpty()) {
++		Ui::AddDividerText(content, rpl::single(status));
++	}
++	Ui::AddSubsectionTitle(content, rpl::single(Tr(u"Your accounts"_q)));
++	if (service.mine().empty() && !service.busy()) {
++		content->add(
++			object_ptr<Ui::FlatLabel>(
++				content,
++				Tr(u"Nothing linked yet."_q),
++				st::settingsExperimentalAbout),
++			st::settingsExperimentalAboutPadding);
++	}
++	for (const auto &account : service.mine()) {
++		const auto line = AccountLine(account);
++		const auto button = content->add(object_ptr<Ui::SettingsButton>(
++			content,
++			rpl::single(line),
++			st::settingsButtonNoIcon));
++		const auto id = account.id;
++		button->setClickedCallback([=] {
++			controller->show(Ui::MakeConfirmBox({
++				.text = Tr(u"Unlink %1?"_q).arg(line),
++				.confirmed = [=](Fn<void()> close) {
++					if (const auto strong = weak.get()) {
++						strong->remove(id);
++					}
++					close();
++				},
++				.confirmText = Tr(u"Unlink"_q),
++			}));
++		});
++	}
++	Ui::AddSkip(content);
++	Ui::AddDivider(content);
++	Ui::AddSkip(content);
++	Ui::AddSubsectionTitle(content, rpl::single(Tr(u"Link an account"_q)));
++	for (const auto &platform : service.platforms()) {
++		if (!platform.available) {
++			continue;
++		}
++		const auto button = content->add(object_ptr<Ui::SettingsButton>(
++			content,
++			rpl::single(platform.name),
++			st::settingsButtonNoIcon));
++		const auto id = platform.id;
++		const auto needsClientId = platform.needsClientId;
++		button->setClickedCallback([=] {
++			const auto go = [=](QString clientId) {
++				if (const auto strong = weak.get()) {
++					strong->link(id, clientId);
++				}
++			};
++			if (needsClientId) {
++				AskClientId(controller, go);
++			} else {
++				go(QString());
++			}
++		});
++	}
++	content->resizeToWidth(content->width());
++}
++
++} // namespace
++
++rpl::producer<TextWithEntities> LinkedAccountsTextValue(
++		not_null<PeerData*> peer) {
++	const auto user = peer->asUser();
++	if (!user || user->isBot() || user->isServiceUser()) {
++		return rpl::single(TextWithEntities());
++	}
++	const auto session = &user->session();
++	const auto id = peerToUser(user->id);
++	return LinkedAccountsValue(
++	) | rpl::map([=](bool enabled) -> rpl::producer<TextWithEntities> {
++		if (!enabled) {
++			return rpl::single(TextWithEntities());
++		}
++		return rpl::single(
++			id
++		) | rpl::then(Service::For(session).profileUpdates(
++		) | rpl::filter([=](UserId updated) {
++			return (updated == id);
++		})) | rpl::map([=] {
++			return AccountsText(Service::For(session).profile(id));
++		});
++	}) | rpl::flatten_latest();
++}
++
++void SetupLinkedAccountsSettings(
++		not_null<Ui::VerticalLayout*> container,
++		not_null<Window::SessionController*> controller) {
++	auto &service = Service::For(&controller->session());
++	const auto content = container->add(
++		object_ptr<Ui::VerticalLayout>(container));
++	service.mineUpdates(
++	) | rpl::on_next([=] {
++		Fill(content, controller);
++	}, content->lifetime());
++	service.loadMine();
++	Fill(content, controller);
++}
++
++bool HandleLinkedAccountsLink(
++		const QUrl &url,
++		Window::SessionController *controller) {
++	if (url.host().toLower() != u"accounts"_q) {
++		return false;
++	}
++	const auto path = url.path().toLower();
++	if (path == u"/linked"_q) {
++		for (const auto &[index, account] : Core::App().domain().accounts()) {
++			if (const auto session = account->maybeSession()) {
++				Service::For(session).invalidate();
++			}
++		}
++		if (controller) {
++			controller->showToast(Tr(u"Account linked."_q));
++		}
++	} else if (path == u"/failed"_q) {
++		const auto reason = QUrlQuery(url).queryItemValue(u"reason"_q);
++		if (controller) {
++			controller->showToast((reason == u"limit"_q)
++				? Tr(u"Too many linked accounts."_q)
++				: Tr(u"Could not link the account."_q));
++		}
++	}
++	return true;
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts.h b/Telegram/SourceFiles/tele/tele_linked_accounts.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..cf79589dc7dc101628661ec6b715825104a1b9b2
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_linked_accounts.h
+@@ -0,0 +1,25 @@
++#pragma once
++
++class PeerData;
++class QUrl;
++
++namespace Ui {
++class VerticalLayout;
++} // namespace Ui
++
++namespace Window {
++class SessionController;
++} // namespace Window
++
++namespace Tele {
++
++[[nodiscard]] rpl::producer<TextWithEntities> LinkedAccountsTextValue(
++	not_null<PeerData*> peer);
++void SetupLinkedAccountsSettings(
++	not_null<Ui::VerticalLayout*> container,
++	not_null<Window::SessionController*> controller);
++bool HandleLinkedAccountsLink(
++	const QUrl &url,
++	Window::SessionController *controller);
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_data.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts_data.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..ee69b60c8b3f0aaf3b670d60586660c1193eafb1
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_linked_accounts_data.cpp
+@@ -0,0 +1,141 @@
++#include "tele/tele_linked_accounts_data.h"
++
++#include <QtCore/QJsonArray>
++#include <QtCore/QJsonDocument>
++#include <QtCore/QJsonObject>
++#include <QtCore/QUrl>
++#include <QtCore/QUrlQuery>
++
++#include <utility>
++
++namespace Tele {
++namespace {
++
++constexpr auto kMaxAccounts = 64;
++constexpr auto kMaxText = 256;
++
++[[nodiscard]] QString Text(const QJsonObject &object, const char *key) {
++	const auto value = object.value(QLatin1String(key));
++	return value.isString()
++		? value.toString().left(kMaxText).trimmed()
++		: QString();
++}
++
++} // namespace
++
++QString InitDataFromWebViewUrl(const QString &url) {
++	const auto parsed = QUrl(url);
++	if (!parsed.isValid()) {
++		return QString();
++	}
++	const auto read = [](const QString &part) {
++		const auto query = QUrlQuery(part);
++		return query.queryItemValue(
++			QStringLiteral("tgWebAppData"),
++			QUrl::FullyDecoded);
++	};
++	const auto fromFragment = read(parsed.fragment(QUrl::FullyEncoded));
++	return fromFragment.isEmpty()
++		? read(parsed.query(QUrl::FullyEncoded))
++		: fromFragment;
++}
++
++std::vector<LinkedAccount> ParseLinkedAccounts(const QByteArray &json) {
++	auto result = std::vector<LinkedAccount>();
++	const auto document = QJsonDocument::fromJson(json);
++	const auto list = document.isObject()
++		? document.object().value(QStringLiteral("accounts")).toArray()
++		: QJsonArray();
++	for (const auto &entry : list) {
++		if (!entry.isObject() || int(result.size()) >= kMaxAccounts) {
++			continue;
++		}
++		const auto object = entry.toObject();
++		auto account = LinkedAccount{
++			.id = Text(object, "id"),
++			.platform = Text(object, "platform"),
++			.handle = Text(object, "handle"),
++			.displayName = Text(object, "displayName"),
++			.url = Text(object, "url"),
++			.verified = object.value(QStringLiteral("verified")).toBool(),
++			.visible = object.value(QStringLiteral("visible")).toBool(true),
++			.hiddenByAdmin = object.value(
++				QStringLiteral("hiddenByAdmin")).toBool(),
++		};
++		if (account.id.isEmpty() || account.platform.isEmpty()) {
++			continue;
++		} else if (!IsSafeLinkedUrl(account.url)) {
++			account.url = QString();
++		}
++		result.push_back(std::move(account));
++	}
++	return result;
++}
++
++std::vector<LinkedPlatform> ParseLinkedPlatforms(const QByteArray &json) {
++	auto result = std::vector<LinkedPlatform>();
++	const auto document = QJsonDocument::fromJson(json);
++	if (!document.isArray()) {
++		return result;
++	}
++	for (const auto &entry : document.array()) {
++		if (!entry.isObject()) {
++			continue;
++		}
++		const auto object = entry.toObject();
++		auto platform = LinkedPlatform{
++			.id = Text(object, "id"),
++			.name = Text(object, "name"),
++			.category = Text(object, "category"),
++			.available = object.value(QStringLiteral("available")).toBool(),
++			.needsClientId = object.value(
++				QStringLiteral("needsClientId")).toBool(),
++		};
++		if (!platform.id.isEmpty()) {
++			if (platform.name.isEmpty()) {
++				platform.name = LinkedPlatformTitle(platform.id);
++			}
++			result.push_back(std::move(platform));
++		}
++	}
++	return result;
++}
++
++QString ParseLinkedToken(const QByteArray &json) {
++	const auto document = QJsonDocument::fromJson(json);
++	return document.isObject()
++		? document.object().value(QStringLiteral("token")).toString()
++		: QString();
++}
++
++QString LinkedPlatformTitle(const QString &platform) {
++	static const auto known = std::vector<std::pair<QString, QString>>{
++		{ QStringLiteral("steam"), QStringLiteral("Steam") },
++		{ QStringLiteral("spotify"), QStringLiteral("Spotify") },
++		{ QStringLiteral("discord"), QStringLiteral("Discord") },
++		{ QStringLiteral("twitch"), QStringLiteral("Twitch") },
++		{ QStringLiteral("github"), QStringLiteral("GitHub") },
++		{ QStringLiteral("gitlab"), QStringLiteral("GitLab") },
++		{ QStringLiteral("reddit"), QStringLiteral("Reddit") },
++		{ QStringLiteral("soundcloud"), QStringLiteral("SoundCloud") },
++		{ QStringLiteral("lastfm"), QStringLiteral("Last.fm") },
++	};
++	for (const auto &[id, title] : known) {
++		if (id == platform) {
++			return title;
++		}
++	}
++	return platform.isEmpty()
++		? QString()
++		: platform.left(1).toUpper() + platform.mid(1);
++}
++
++bool IsSafeLinkedUrl(const QString &url) {
++	const auto parsed = QUrl(url, QUrl::StrictMode);
++	return parsed.isValid()
++		&& (parsed.scheme() == QStringLiteral("https"))
++		&& !parsed.host().isEmpty()
++		&& parsed.userInfo().isEmpty();
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_data.h b/Telegram/SourceFiles/tele/tele_linked_accounts_data.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..9591245fbe85e919d1c57c5fdbdcd30be6776dbc
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_linked_accounts_data.h
+@@ -0,0 +1,38 @@
++#pragma once
++
++#include <QtCore/QByteArray>
++#include <QtCore/QString>
++
++#include <vector>
++
++namespace Tele {
++
++struct LinkedAccount {
++	QString id;
++	QString platform;
++	QString handle;
++	QString displayName;
++	QString url;
++	bool verified = false;
++	bool visible = true;
++	bool hiddenByAdmin = false;
++};
++
++struct LinkedPlatform {
++	QString id;
++	QString name;
++	QString category;
++	bool available = false;
++	bool needsClientId = false;
++};
++
++[[nodiscard]] QString InitDataFromWebViewUrl(const QString &url);
++[[nodiscard]] std::vector<LinkedAccount> ParseLinkedAccounts(
++	const QByteArray &json);
++[[nodiscard]] std::vector<LinkedPlatform> ParseLinkedPlatforms(
++	const QByteArray &json);
++[[nodiscard]] QString ParseLinkedToken(const QByteArray &json);
++[[nodiscard]] QString LinkedPlatformTitle(const QString &platform);
++[[nodiscard]] bool IsSafeLinkedUrl(const QString &url);
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_mad_link_parser.cpp b/Telegram/SourceFiles/tele/tele_mad_link_parser.cpp
+index 0df75f2889fb750c996a0e5aecfc4403d8f284ce..6c606373890d1fa1ed0845b76bfc02a80c5a636d 100644
+--- a/Telegram/SourceFiles/tele/tele_mad_link_parser.cpp
++++ b/Telegram/SourceFiles/tele/tele_mad_link_parser.cpp
+@@ -18,7 +18,7 @@ bool ValidControl(const QString &control) {
+ 
+ bool ValidCategory(const QString &category) {
+ 	static const auto categories = QStringList{
+-		u""_s, u"badges"_s, u"server"_s, u"backup"_s,
++		u""_s, u"badges"_s, u"accounts"_s, u"server"_s, u"backup"_s,
+ 		u"interface"_s, u"chats"_s, u"messages"_s, u"sending"_s,
+ 		u"notifications"_s, u"menus"_s, u"privacy"_s,
+ 		u"profiles"_s, u"bots"_s, u"debug"_s, u"new"_s,
+diff --git a/Telegram/SourceFiles/tele/tele_mad_links.cpp b/Telegram/SourceFiles/tele/tele_mad_links.cpp
+index 187ef08dde861990b616f20d2faf9bca5f4fac39..3e4d79de2005b16e8a7ce06c7db828179fbe5c52 100644
+--- a/Telegram/SourceFiles/tele/tele_mad_links.cpp
++++ b/Telegram/SourceFiles/tele/tele_mad_links.cpp
+@@ -4,6 +4,7 @@
+ #include "base/platform/base_platform_url_scheme.h"
+ #include "core/application.h"
+ #include "core/click_handler_types.h"
++#include "tele/tele_linked_accounts.h"
+ #include "tele/tele_lowercase.h"
+ #include "tele/tele_options.h"
+ #include "ui/text/text_entity.h"
+@@ -11,6 +12,7 @@
+ #include "window/window_session_controller.h"
+ #include <QtCore/QCoreApplication>
+ #include <QtCore/QDir>
++#include <QtCore/QUrl>
+ 
+ namespace Tele {
+ 
+@@ -64,6 +66,17 @@ bool OpenMadLink(const QString &url, const QVariant &context) {
+ 		base::options::lookup<bool>(ghost ? kOptionGhost : kOptionStreamerMode).set(enabled);
+ 		return true;
+ 	}
++	const auto parsed = QUrl(url.trimmed());
++	if (parsed.host().toLower() == u"accounts"_q) {
++		const auto clicked = context.value<ClickHandlerContext>().sessionWindow.get();
++		const auto window = Core::App().activeWindow();
++		const auto controller = clicked ? clicked
++			: window ? window->sessionController() : nullptr;
++		if (HandleLinkedAccountsLink(parsed, controller)) {
++			const auto settings = LocalMadLink(u"mad://settings/accounts"_q);
++			return Core::App().openLocalUrl(settings, context);
++		}
++	}
+ 	const auto local = LocalMadLink(url);
+ 	if (!local.isEmpty()) {
+ 		return Core::App().openLocalUrl(local, context);
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index d22ad97ac75820739a23691a92e33f1c8853e9f5..2f3f8aa8d9bfac771f2898ff6308421378eb3b46 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -11,6 +11,8 @@ const char kOptionHistorySyncAccounts[] = "tele-history-sync-accounts";
+ const char kOptionHideMadSettingsMenu[] = "tele-hide-mad-settings-menu";
+ 
+ const char kOptionMadBadges[] = "tele-mad-badges";
++const char kOptionLinkedAccounts[] = "tele-linked-accounts";
++const char kOptionSpotifyClientId[] = "tele-spotify-client-id";
+ 
+ 
+ const char kOptionHideStories[] = "tele-hide-stories";
+@@ -769,6 +771,19 @@ base::options::toggle ViewerAnimationsOption({
+ 		"size.",
+ });
+ 
++base::options::toggle LinkedAccountsOption({
++	.id = kOptionLinkedAccounts,
++	.name = "Accounts in profiles",
++	.description = "Shows the Steam, Spotify, Discord and other accounts "
++		"people linked in mad in their profiles. Loaded from b.mad.tg.",
++	.defaultValue = true,
++});
++
++base::options::option<QString> SpotifyClientIdOption({
++	.id = kOptionSpotifyClientId,
++	.name = "Spotify Client ID",
++});
++
+ base::options::toggle SmoothScrollOption({
+ 	.id = kOptionSmoothScroll,
+ 	.name = "Smooth wheel scrolling",
+@@ -2756,6 +2771,24 @@ bool ViewerAnimations() {
+ 		&& !anim::Disabled();
+ }
+ 
++rpl::producer<bool> LinkedAccountsValue() {
++	return rpl::single(
++		rpl::empty
++	) | rpl::then(
++		LinkedAccountsOption.changes()
++	) | rpl::map([] {
++		return LinkedAccountsOption.value();
++	});
++}
++
++QString SpotifyClientId() {
++	return SpotifyClientIdOption.value();
++}
++
++void SetSpotifyClientId(const QString &value) {
++	SpotifyClientIdOption.set(value);
++}
++
+ bool SmoothJumps() {
+ 	return SmoothJumpsOption.value()
+ 		&& !ReduceMotionOption.value()
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index 277006888cd210267e40473c90bc39337998d222..2a38b3c8edb03ada10004e05462ef372933fe159 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -7,6 +7,8 @@ extern const char kOptionHideMadSettingsMenu[];
+ [[nodiscard]] bool HideMadSettingsMenu();
+ 
+ extern const char kOptionMadBadges[];
++extern const char kOptionLinkedAccounts[];
++extern const char kOptionSpotifyClientId[];
+ [[nodiscard]] bool MadBadgesEnabled();
+ 
+ extern const char kOptionHideStories[];
+@@ -399,6 +401,9 @@ void SetLinkPreviews(const QString &value);
+ [[nodiscard]] bool AnimateIncoming();
+ [[nodiscard]] bool ChatCrossfade();
+ [[nodiscard]] bool ViewerAnimations();
++[[nodiscard]] rpl::producer<bool> LinkedAccountsValue();
++[[nodiscard]] QString SpotifyClientId();
++void SetSpotifyClientId(const QString &value);
+ [[nodiscard]] rpl::producer<> ReduceMotionChanges();
+ [[nodiscard]] QString ReduceMotionSaved();
+ void SetReduceMotionSaved(const QString &value);
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index a474bc9aa93f1d26d7ad0322b7529f17c938114c..7843915c36b4feebf61516c8d845ba6bbef655c4 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -297,6 +297,7 @@ struct Spec {
+ 		Toggle(kOptionAnimateIncoming),
+ 		Toggle(kOptionChatCrossfade),
+ 		Toggle(kOptionViewerAnimations),
++		Toggle(kOptionLinkedAccounts),
+ 		Toggle(kOptionHideForeignAgent),
+ 		Toggle(kOptionHideBirthdays),
+ 		Toggle(kOptionSilentByDefault),
+@@ -438,6 +439,7 @@ struct Spec {
+ 		Internal(kOptionViewerLoop),
+ 		Internal(kOptionTitleBuildHash),
+ 		Internal(kOptionPinnedBarChats),
++		Internal(kOptionSpotifyClientId),
+ 		Internal(kOptionReduceMotionSaved),
+ 		Internal(kOptionTranslateOutTo),
+ 		Internal(kOptionLocalPassword),
+diff --git a/Telegram/SourceFiles/tele/tests/mad_links_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_links_tests.cpp
+index 13e0df2652b49198587ae1ce5f7b76c78808be3a..8951d9d2bafde9148965c6c84ac19972efb055bd 100644
+--- a/Telegram/SourceFiles/tele/tests/mad_links_tests.cpp
++++ b/Telegram/SourceFiles/tele/tests/mad_links_tests.cpp
+@@ -40,7 +40,8 @@ int main(int argc, char *argv[]) {
+ 		Require(Tele::LocalMadLink(publicLink) == output, "round trip");
+ 	}
+ 	for (const auto &category : QStringList{
+-		u""_s, u"badges"_s, u"server"_s, u"backup"_s, u"interface"_s,
++		u""_s, u"badges"_s, u"accounts"_s, u"server"_s, u"backup"_s,
++		u"interface"_s,
+ 		u"chats"_s, u"messages"_s, u"sending"_s, u"notifications"_s,
+ 		u"menus"_s, u"privacy"_s, u"profiles"_s, u"bots"_s, u"debug"_s, u"new"_s,
+ 	}) {
+diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+index 05507e0bb373ead979f4b81ea1184d3d174d12fd..6fda1ca9a280a6527dea5bd8974c1e2053d311b4 100644
+--- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
++++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+@@ -3,6 +3,7 @@
+ #include "tele/tele_pinned_bar_rules.h"
+ #include "tele/tele_foreign_agent_ranges.h"
+ #include "tele/tele_jump_plan.h"
++#include "tele/tele_linked_accounts_data.h"
+ 
+ #include <cstdio>
+ #include <cstdlib>
+@@ -84,6 +85,27 @@ void TestJumpPlan() {
+ 	Require(PlanJump(100, 0, true).duration == 0, "no viewport");
+ }
+ 
++void TestLinkedAccounts() {
++	using namespace Tele;
++	Require(InitDataFromWebViewUrl(QStringLiteral("https://b.mad.tg/tg/#tgWebAppData=query_id%3DAAE%26user%3D%257B%2522id%2522%253A1%257D%26hash%3Dab&tgWebAppVersion=8.0"))
++		== QStringLiteral("query_id=AAE&user=%7B%22id%22%3A1%7D&hash=ab"), "init data from fragment");
++	Require(InitDataFromWebViewUrl(QStringLiteral("https://b.mad.tg/tg/")).isEmpty(), "no init data");
++	const auto accounts = ParseLinkedAccounts(QByteArrayLiteral(
++		"{\"design\":\"row\",\"accounts\":["
++		"{\"id\":\"a1\",\"platform\":\"steam\",\"handle\":\"gabe\",\"displayName\":\"Gabe\",\"url\":\"https://steamcommunity.com/id/gabe\",\"verified\":true},"
++		"{\"id\":\"a2\",\"platform\":\"github\",\"handle\":\"x\",\"url\":\"javascript:alert(1)\"},"
++		"{\"platform\":\"broken\"}]}"));
++	Require(accounts.size() == 2, "accounts parsed");
++	Require(accounts[0].displayName == QStringLiteral("Gabe") && accounts[0].verified, "account fields");
++	Require(accounts[1].url.isEmpty(), "unsafe url dropped");
++	const auto platforms = ParseLinkedPlatforms(QByteArrayLiteral(
++		"[{\"id\":\"spotify\",\"name\":\"Spotify\",\"available\":true,\"needsClientId\":true},{\"id\":\"lastfm\",\"available\":false}]"));
++	Require(platforms.size() == 2 && platforms[0].needsClientId, "platforms parsed");
++	Require(platforms[1].name == QStringLiteral("Last.fm"), "platform title fallback");
++	Require(ParseLinkedToken(QByteArrayLiteral("{\"token\":\"t\",\"userId\":1}")) == QStringLiteral("t"), "token");
++	Require(LinkedPlatformTitle(QStringLiteral("newsite")) == QStringLiteral("Newsite"), "unknown platform title");
++}
++
+ } // namespace
+ 
+ int main() {
+@@ -92,5 +114,6 @@ int main() {
+ 	TestPinnedBarRules();
+ 	TestForeignAgent();
+ 	TestJumpPlan();
++	TestLinkedAccounts();
+ 	return 0;
+ }
+diff --git a/Telegram/cmake/mad_tests.cmake b/Telegram/cmake/mad_tests.cmake
+index 3e76b4ac44b4a6defb828dc721376f0d00a81db4..92b26449a9a900effd51d20d0d398d1e4faadc2e 100644
+--- a/Telegram/cmake/mad_tests.cmake
++++ b/Telegram/cmake/mad_tests.cmake
+@@ -49,6 +49,7 @@ target_sources(mad_logic_tests PRIVATE
+     ${src_loc}/tele/tele_pinned_bar_rules.cpp
+     ${src_loc}/tele/tele_foreign_agent_ranges.cpp
+     ${src_loc}/tele/tele_jump_plan.cpp
++    ${src_loc}/tele/tele_linked_accounts_data.cpp
+     ${src_loc}/tele/tests/mad_logic_tests.cpp
+ )
+ target_link_libraries(mad_logic_tests PRIVATE

@@ -540,6 +540,7 @@ everything else.
 | [410](../patches/tdesktop/0410-feat-smooth-zoom-in-the-media-viewer.patch) | zooming and rotating in the media viewer glide to the new size, also without opengl | settings → mad → interface, off |
 | [411](../patches/tdesktop/0411-feat-descriptions-for-mad-options-that-had-none.patch) | about sixty mad options that had no explanation now say what they do | settings → mad |
 | [412](../patches/tdesktop/0412-feat-group-the-bot-options-in-mad-settings.patch) | the bot options are split into buttons, inline bots, bot chats and mini apps | settings → mad → bots |
+| [413](../patches/tdesktop/0413-feat-accounts-linked-in-mad-show-up-in-profiles.patch) | accounts people linked in mad, like Steam, Spotify, Discord or Twitch, show up in their profiles; a new accounts page links and unlinks your own through b.mad.tg, signing in silently with the @maddtgbot mini app | settings → mad → accounts, on |
 | [1006](../patches/Telegram/lib_ui/0006-feat-let-scripts-swap-label-texts-and-find-full-widt.patch) | text a script changed in tele's windows comes back exactly as it was, formatting and custom emoji included, when the script stops, and rows a script adds to info tables stay above their last full-width line | with 301 |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1011](../patches/Telegram/lib_ui/0009-feat-let-labels-pick-their-text-pen-per-paint.patch) | the part of animated profile names that lives in the ui library | with 390 |
