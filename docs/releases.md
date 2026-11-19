@@ -2,7 +2,7 @@
 
 every tele patch, grouped by the release that brought it, newest first. [features](features.md) has the same rows grouped by settings page. release notes and the in-app what's new are made from these rows, so their format is strict: see [the patch row](development.md#the-patch-row).
 
-all 421 patches, newest release first.
+all 422 patches, newest release first.
 
 ### [mad dev](mad.md)
 
@@ -83,6 +83,7 @@ all 421 patches, newest release first.
 | [408](../patches/tdesktop/0408-feat-new-messages-can-fade-in.patch) | incoming messages fade in while they slide up | settings → mad → interface, off |
 | [409](../patches/tdesktop/0409-feat-crossfade-when-switching-chats-and-folders.patch) | opening another chat or folder fades over from the old one instead of changing at once | settings → mad → interface, off |
 | [410](../patches/tdesktop/0410-feat-smooth-zoom-in-the-media-viewer.patch) | zooming and rotating in the media viewer glide to the new size, also without opengl | settings → mad → interface, off |
+| [411](../patches/tdesktop/0411-feat-descriptions-for-mad-options-that-had-none.patch) | about sixty mad options that had no explanation now say what they do | settings → mad |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1009](../patches/Telegram/lib_rpl/0001-fix-topic-tabs-no-longer-crash-after-you-move-them.patch) | topic and direct message tabs no longer crash after you move them to the top, bottom or side and then scroll them. the cause was in the library that passes events around, so anything else that lost updates the same way is fixed too | always on |
 | [1010](../patches/Telegram/ThirdParty/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs/0001-fix-refuse-await-using-outside-async-functions.patch) | closes the quickjs hole that let a bot's message widget run any program on your pc: the engine gets telegram's own `await using` fix from widget-sandbox 0.6.4, which telegram desktop 7.4.2 ships without | always on |

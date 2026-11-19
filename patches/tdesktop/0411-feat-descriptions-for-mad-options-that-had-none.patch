@@ -1,0 +1,538 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 03:31:16 +0200
+Subject: [PATCH] feat: descriptions for mad options that had none
+
+---
+ Telegram/Resources/langs/mad_ru.json       | 59 ++++++++++++++-
+ Telegram/SourceFiles/tele/tele_options.cpp | 85 ++++++++++++++++++++++
+ 2 files changed, 143 insertions(+), 1 deletion(-)
+
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index d706326fa321527cf805d5e404d842a20fffd242..94845ee1a5d18773177b96db9c3c8abd9d059824 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2165,5 +2165,62 @@
+   "Crossfade when switching chats": "Плавная смена чатов",
+   "Opening another chat or folder fades from the old one instead of changing at once.": "Другой чат или папка плавно проявляются поверх старых, а не меняются резко.",
+   "Smooth zoom in the media viewer": "Плавный зум в просмотрщике",
+-  "Zooming and rotating photos and videos glide to the new size.": "Фото и видео плавно меняют размер при зуме и повороте."
++  "Zooming and rotating photos and videos glide to the new size.": "Фото и видео плавно меняют размер при зуме и повороте.",
++  "Removes stories from the chat list.": "Убирает истории из списка чатов.",
++  "Hides your reading, typing and online status from others. What exactly is hidden is set below.": "Скрывает от других, что ты читаешь, печатаешь и в сети. Что именно скрывать, настраивается ниже.",
++  "A ghost mode switch in the side menu.": "Переключатель режима призрака в боковом меню.",
++  "Replying in a chat marks it as read even in ghost mode.": "Ответ в чате отмечает его прочитанным даже в режиме призрака.",
++  "Authors don't see that you watched their stories.": "Автор не увидит, что ты смотрел его историю.",
++  "No notifications for messages from people you ignore.": "Не приходят уведомления о сообщениях от игнорируемых людей.",
++  "An item to ignore someone in the menu of their userpic in a chat.": "Пункт «игнорировать» в меню аватарки в чате.",
++  "A streamer mode switch in the side menu.": "Переключатель режима стримера в боковом меню.",
++  "The wallet accepts a private key where it asks for secret words.": "Кошелёк принимает приватный ключ там, где просит секретные слова.",
++  "The secret words can be copied right away.": "Секретную фразу можно скопировать сразу, без ожидания.",
++  "Hides the block of similar channels.": "Скрывает блок похожих каналов.",
++  "Hides the @ button that jumps to unread mentions.": "Скрывает кнопку @, которая ведёт к непрочитанным упоминаниям.",
++  "Hides Telegram's AI buttons and features.": "Скрывает кнопки и функции ИИ от телеграма.",
++  "Hides the built-in wallet and TON transfers in chats.": "Скрывает встроенный кошелёк и переводы TON в чатах.",
++  "An item in chat menus to set a background just for you.": "Пункт в меню чата, чтобы поставить фон только для себя.",
++  "An item in chat menus to give a chat your own @alias.": "Пункт в меню чата, чтобы дать чату свой @алиас.",
++  "Turns off swipe gestures on the touchpad.": "Отключает жесты свайпа на тачпаде.",
++  "An item in the message field menu to add or remove a link preview.": "Пункт в меню поля ввода, чтобы добавить или убрать превью ссылки.",
++  "Shows line numbers next to code.": "Показывает номера строк рядом с кодом.",
++  "Large emoji are drawn without an outline.": "Крупные эмодзи рисуются без обводки.",
++  "A video message grows bigger while it plays.": "Кружок становится больше, пока играет.",
++  "Typing a bracket or a quote over selected text wraps it instead of replacing it.": "Скобка или кавычка поверх выделенного текста оборачивает его, а не заменяет.",
++  "Typing an opening bracket or ``` adds the closing one.": "При вводе открывающей скобки или ``` сразу добавляется закрывающая.",
++  "A new line starts with the same indentation as the previous one.": "Новая строка начинается с тем же отступом, что и предыдущая.",
++  "Tab and Shift+Tab shift the selected lines.": "Tab и Shift+Tab сдвигают выделенные строки.",
++  "Sent text appears in the chat at once, without flying out of the field.": "Отправленный текст сразу появляется в чате, без полёта из поля ввода.",
++  "Saved drafts in the menu of the send button.": "Сохранённые черновики в меню кнопки отправки.",
++  "Drag the top edge of the message field to make it taller.": "Потяни верхний край поля ввода, чтобы сделать его выше.",
++  "Hides unread counters. Where exactly is set below.": "Скрывает счётчики непрочитанных. Где именно, выбирается ниже.",
++  "Profiles show whether this person has you in their contacts too.": "В профиле видно, есть ли ты в контактах у этого человека.",
++  "Copying a username in a profile gives a t.me link.": "Копирование юзернейма в профиле даёт ссылку t.me.",
++  "An item in chat menus to rename a chat just for you.": "Пункт в меню чата, чтобы переименовать чат только для себя.",
++  "Shows the @username instead of a name made of invisible characters.": "Показывает @юзернейм вместо имени из невидимых символов.",
++  "The profile header uses the blurred profile photo as its background.": "Шапка профиля использует размытое фото профиля как фон.",
++  "Copy items in the message menu that keep the formatting as Markdown or HTML.": "Пункты копирования с разметкой Markdown или HTML в меню сообщения.",
++  "Asks for a local password before paid actions. Which ones is set below.": "Спрашивает локальный пароль перед платными действиями. Какими именно, выбирается ниже.",
++  "The interface scale slider moves in 1% steps.": "Ползунок масштаба интерфейса двигается с шагом в 1%.",
++  "The back side button of a mouse closes the media viewer.": "Боковая кнопка мыши «назад» закрывает просмотр медиа.",
++  "Shows how many members are online in big groups where Telegram doesn't.": "Показывает, сколько участников в сети, в больших группах, где телеграм этого не показывает.",
++  "Hides the channel your proxy promotes in the chat list.": "Скрывает из списка чатов канал, который продвигает твой прокси.",
++  "Hides the heart button that jumps to unread reactions.": "Скрывает кнопку с сердечком, которая ведёт к непрочитанным реакциям.",
++  "The emoji, sticker and GIF panel opens on click, not on hover.": "Панель эмодзи, стикеров и гифок открывается по нажатию, а не при наведении.",
++  "Spoilers in text and media open by themselves. Where exactly is set below.": "Спойлеры в тексте и медиа открываются сами. Где именно, выбирается ниже.",
++  "Click anywhere on a playing video message to seek.": "Нажми в любое место играющего кружка, чтобы перемотать.",
++  "Bookmark messages to come back to them later.": "Закладки на сообщения, чтобы вернуться к ним позже.",
++  "Messages sent while a file uploads wait and go after it, keeping the order.": "Сообщения, отправленные во время загрузки файла, ждут и уходят после него, порядок сохраняется.",
++  "Pasting formatted text doesn't ask whether to keep the formatting.": "При вставке текста с форматированием не спрашивает, сохранить ли его.",
++  "Removes the gift button from the message field.": "Убирает кнопку подарка из поля ввода.",
++  "Asks before a message is sent. What to confirm is set below.": "Спрашивает перед отправкой. Что подтверждать, выбирается ниже.",
++  "Messages go without sound unless you pick otherwise in the send menu.": "Сообщения уходят без звука, если не выбрать иначе в меню отправки.",
++  "The gift box can send the same gift several times in one go.": "В окне подарка можно отправить один и тот же подарок несколько раз за раз.",
++  "Gifts hidden from a profile look faded in its gift list.": "Скрытые из профиля подарки выглядят приглушёнными в списке подарков.",
++  "Opens the gift studio from the side menu.": "Студия подарков открывается из бокового меню.",
++  "IDs in profiles are shown and copied without spaces.": "ID в профилях показываются и копируются без пробелов.",
++  "The ID and the data center are shown in one row.": "ID и дата-центр показываются одной строкой.",
++  "The chat list shows typing even for people who hide their last seen.": "Список чатов показывает «печатает» даже у тех, кто скрыл время посещения.",
++  "A right click next to a message, not only on it, opens its menu.": "Правый клик рядом с сообщением, а не только по нему, открывает его меню."
+ }
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index 3c89105d45609f72e5005d36d0958cdbead611ac..d22ad97ac75820739a23691a92e33f1c8853e9f5 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -338,6 +338,7 @@ base::options::toggle MadBadgesOption({
+ base::options::toggle HideStoriesOption({
+ 	.id = kOptionHideStories,
+ 	.name = "Hide stories",
++	.description = "Removes stories from the chat list.",
+ 	.restartRequired = true,
+ });
+ 
+@@ -350,11 +351,14 @@ base::options::toggle InvisibleStoriesOption({
+ base::options::toggle GhostOption({
+ 	.id = kOptionGhost,
+ 	.name = "Ghost mode",
++	.description = "Hides your reading, typing and online status from "
++		"others. What exactly is hidden is set below.",
+ });
+ 
+ base::options::toggle GhostInMenuOption({
+ 	.id = kOptionGhostInMenu,
+ 	.name = "Ghost mode in the main menu",
++	.description = "A ghost mode switch in the side menu.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -381,6 +385,8 @@ base::options::toggle GhostReadOption({
+ base::options::toggle GhostReadOnReplyOption({
+ 	.id = kOptionGhostReadOnReply,
+ 	.name = "Mark as read when I reply",
++	.description = "Replying in a chat marks it as read even in ghost "
++		"mode.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -414,6 +420,7 @@ base::options::toggle GhostSchedulePendingOption({
+ base::options::toggle GhostStoriesOption({
+ 	.id = kOptionGhostStories,
+ 	.name = "Don't mark stories as viewed",
++	.description = "Authors don't see that you watched their stories.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -508,6 +515,7 @@ base::options::toggle LowercaseOption({
+ base::options::toggle ScaleOnePercentOption({
+ 	.id = kOptionScaleOnePercent,
+ 	.name = "Interface scale in 1% steps",
++	.description = "The interface scale slider moves in 1% steps.",
+ });
+ 
+ base::options::toggle SmallWindowOption({
+@@ -547,11 +555,14 @@ base::options::toggle WalletKeepOldOption({
+ base::options::toggle WalletPrivateKeysOption({
+ 	.id = kOptionWalletPrivateKeys,
+ 	.name = "Import wallets from private keys",
++	.description = "The wallet accepts a private key where it asks for "
++		"secret words.",
+ });
+ 
+ base::options::toggle WalletCopyWordsOption({
+ 	.id = kOptionWalletCopyWords,
+ 	.name = "Copy secret words without waiting",
++	.description = "The secret words can be copied right away.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -595,6 +606,8 @@ base::options::toggle BubbleBadgesOption({
+ base::options::toggle OnlineInBigGroupsOption({
+ 	.id = kOptionOnlineInBigGroups,
+ 	.name = "Show online members in big groups",
++	.description = "Shows how many members are online in big groups where "
++		"Telegram doesn't.",
+ });
+ 
+ base::options::toggle HideSponsoredOption({
+@@ -606,6 +619,8 @@ base::options::toggle HideSponsoredOption({
+ base::options::toggle HideProxySponsorOption({
+ 	.id = kOptionHideProxySponsor,
+ 	.name = "Hide the proxy sponsor channel",
++	.description = "Hides the channel your proxy promotes in the chat "
++		"list.",
+ });
+ 
+ base::options::toggle NoLinkWarningOption({
+@@ -648,6 +663,8 @@ base::options::option<QString> LinkPreviewsOption({
+ base::options::toggle LinkPreviewMenuOption({
+ 	.id = kOptionLinkPreviewMenu,
+ 	.name = "Link preview item in the field menu",
++	.description = "An item in the message field menu to add or remove a "
++		"link preview.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -666,6 +683,7 @@ base::options::toggle HideCommunitiesOption({
+ base::options::toggle HideSimilarOption({
+ 	.id = kOptionHideSimilar,
+ 	.name = "Hide similar channels",
++	.description = "Hides the block of similar channels.",
+ });
+ 
+ base::options::toggle HideSimilarJoinOption({
+@@ -783,6 +801,8 @@ base::options::toggle ScrollZoomOption({
+ base::options::toggle ViewerMouseBackOption({
+ 	.id = kOptionViewerMouseBack,
+ 	.name = "Close the media viewer with mouse back",
++	.description = "The back side button of a mouse closes the media "
++		"viewer.",
+ });
+ 
+ base::options::toggle StaticUserpicsChatsOption({
+@@ -794,11 +814,13 @@ base::options::toggle StaticUserpicsChatsOption({
+ base::options::toggle HideMentionsButtonOption({
+ 	.id = kOptionHideMentionsButton,
+ 	.name = "Hide unread mention markers",
++	.description = "Hides the @ button that jumps to unread mentions.",
+ });
+ 
+ base::options::toggle HideReactionsButtonOption({
+ 	.id = kOptionHideReactionsButton,
+ 	.name = "Hide unread reaction markers",
++	.description = "Hides the heart button that jumps to unread reactions.",
+ });
+ 
+ base::options::option<QString> ReactionsStripCountOption({
+@@ -818,11 +840,13 @@ base::options::option<QString> ReactionsOrderOption({
+ base::options::toggle NoAiOption({
+ 	.id = kOptionNoAi,
+ 	.name = "Turn off AI features",
++	.description = "Hides Telegram's AI buttons and features.",
+ });
+ 
+ base::options::toggle NoMoneyOption({
+ 	.id = kOptionNoMoney,
+ 	.name = "Turn off Money",
++	.description = "Hides the built-in wallet and TON transfers in chats.",
+ 	.restartRequired = true,
+ });
+ 
+@@ -835,6 +859,8 @@ base::options::toggle MoneyHideBalancesOption({
+ base::options::toggle EmojiPanelClickOption({
+ 	.id = kOptionEmojiPanelClick,
+ 	.name = "Open the emoji panel by click only",
++	.description = "The emoji, sticker and GIF panel opens on click, not "
++		"on hover.",
+ });
+ 
+ base::options::toggle AttachMenuClickOption({
+@@ -876,6 +902,8 @@ base::options::toggle ShowRegularGiftIdsOption({
+ base::options::toggle GiftQuantityOption({
+ 	.id = kOptionGiftQuantity,
+ 	.name = "Send several gifts at once",
++	.description = "The gift box can send the same gift several times in "
++		"one go.",
+ });
+ 
+ base::options::toggle SeeTgButtonOption({
+@@ -904,6 +932,8 @@ base::options::toggle NoCollectibleTooltipOption({
+ base::options::toggle GiftHiddenDimOption({
+ 	.id = kOptionGiftHiddenDim,
+ 	.name = "Dim hidden gifts",
++	.description = "Gifts hidden from a profile look faded in its gift "
++		"list.",
+ });
+ 
+ base::options::toggle GiftSelectOption({
+@@ -923,6 +953,7 @@ base::options::toggle GiftStudioMenuOption({
+ base::options::toggle GiftStudioMainMenuOption({
+ 	.id = kOptionGiftStudioMainMenu,
+ 	.name = "Gift studio in the main menu",
++	.description = "Opens the gift studio from the side menu.",
+ });
+ 
+ base::options::toggle GiftFakeUpgradeOption({
+@@ -936,6 +967,7 @@ base::options::toggle GiftFakeUpgradeOption({
+ base::options::toggle PeerIdsWithoutSpacesOption({
+ 	.id = kOptionPeerIdsWithoutSpaces,
+ 	.name = "IDs without spaces",
++	.description = "IDs in profiles are shown and copied without spaces.",
+ });
+ 
+ base::options::toggle BotApiPeerIdsOption({
+@@ -977,16 +1009,20 @@ base::options::toggle MemberJoinDateOption({
+ base::options::toggle MutualContactOption({
+ 	.id = kOptionMutualContact,
+ 	.name = "Show if contacts are mutual",
++	.description = "Profiles show whether this person has you in their "
++		"contacts too.",
+ });
+ 
+ base::options::toggle CopyUsernameLinkOption({
+ 	.id = kOptionCopyUsernameLink,
+ 	.name = "Copy usernames in profiles as links",
++	.description = "Copying a username in a profile gives a t.me link.",
+ });
+ 
+ base::options::toggle MergeIdDcOption({
+ 	.id = kOptionMergeIdDc,
+ 	.name = "ID and DC in one row",
++	.description = "The ID and the data center are shown in one row.",
+ });
+ 
+ base::options::toggle MediaUploadDateOption({
+@@ -1022,11 +1058,14 @@ base::options::toggle HideIgnoredOption({
+ base::options::toggle MuteIgnoredOption({
+ 	.id = kOptionMuteIgnored,
+ 	.name = "Mute ignored messages",
++	.description = "No notifications for messages from people you ignore.",
+ });
+ 
+ base::options::toggle IgnoreInMenuOption({
+ 	.id = kOptionIgnoreInMenu,
+ 	.name = "Ignore from the userpic menu",
++	.description = "An item to ignore someone in the menu of their userpic "
++		"in a chat.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -1153,6 +1192,8 @@ base::options::option<QString> SavedHistoryPeriodOption({
+ base::options::toggle RevealSpoilersOption({
+ 	.id = kOptionRevealSpoilers,
+ 	.name = "Reveal spoilers automatically",
++	.description = "Spoilers in text and media open by themselves. Where "
++		"exactly is set below.",
+ });
+ 
+ base::options::toggle WavMusicOption({
+@@ -1189,6 +1230,7 @@ base::options::toggle RevealSpoilersSavedOption({
+ base::options::toggle CodeLineNumbersOption({
+ 	.id = kOptionCodeLineNumbers,
+ 	.name = "Line numbers in code blocks",
++	.description = "Shows line numbers next to code.",
+ });
+ 
+ base::options::toggle HideBubbleTailsOption({
+@@ -1206,16 +1248,19 @@ base::options::toggle BubblePaddingOption({
+ base::options::toggle NoEmojiOutlineOption({
+ 	.id = kOptionNoEmojiOutline,
+ 	.name = "No outline on large emoji",
++	.description = "Large emoji are drawn without an outline.",
+ });
+ 
+ base::options::toggle BiggerRoundVideosOption({
+ 	.id = kOptionBiggerRoundVideos,
+ 	.name = "Bigger video messages while playing",
++	.description = "A video message grows bigger while it plays.",
+ });
+ 
+ base::options::toggle RoundSeekAnywhereOption({
+ 	.id = kOptionRoundSeekAnywhere,
+ 	.name = "Seek anywhere on video messages",
++	.description = "Click anywhere on a playing video message to seek.",
+ });
+ 
+ base::options::toggle CopyProtectedOption({
+@@ -1270,6 +1315,7 @@ base::options::toggle StreamerModeOption({
+ base::options::toggle StreamerModeInMenuOption({
+ 	.id = kOptionStreamerModeInMenu,
+ 	.name = "Streamer mode in the main menu",
++	.description = "A streamer mode switch in the side menu.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -1333,11 +1379,15 @@ base::options::toggle RestrictMenuOption({
+ base::options::toggle CopyMarkdownOption({
+ 	.id = kOptionCopyMarkdown,
+ 	.name = "Copy as Markdown and HTML",
++	.description = "Copy items in the message menu that keep the "
++		"formatting as Markdown or HTML.",
+ });
+ 
+ base::options::toggle RmbBesideBubbleOption({
+ 	.id = kOptionRmbBesideBubble,
+ 	.name = "Message menu next to the bubble",
++	.description = "A right click next to a message, not only on it, opens "
++		"its menu.",
+ });
+ 
+ base::options::toggle ShotOption({
+@@ -1435,11 +1485,15 @@ base::options::toggle SentToBottomOption({
+ base::options::toggle NoTextSendingAnimationOption({
+ 	.id = kOptionNoTextSendingAnimation,
+ 	.name = "Turn off text sending animation",
++	.description = "Sent text appears in the chat at once, without flying "
++		"out of the field.",
+ });
+ 
+ base::options::toggle QueueBehindMediaOption({
+ 	.id = kOptionQueueBehindMedia,
+ 	.name = "Queue messages behind uploading media",
++	.description = "Messages sent while a file uploads wait and go after "
++		"it, keeping the order.",
+ });
+ 
+ base::options::toggle SendOlderRepliesOption({
+@@ -1493,6 +1547,8 @@ base::options::toggle HideBotEditedOption({
+ base::options::toggle NoRichPastePromptOption({
+ 	.id = kOptionNoRichPastePrompt,
+ 	.name = "No rich message prompt on paste",
++	.description = "Pasting formatted text doesn't ask whether to keep the "
++		"formatting.",
+ });
+ 
+ base::options::toggle LiveMarkdownOption({
+@@ -1506,21 +1562,27 @@ base::options::toggle LiveMarkdownOption({
+ base::options::toggle WrapSelectedTextOption({
+ 	.id = kOptionWrapSelectedText,
+ 	.name = "Wrap selected text",
++	.description = "Typing a bracket or a quote over selected text wraps "
++		"it instead of replacing it.",
+ });
+ 
+ base::options::toggle AutoCloseBracketsOption({
+ 	.id = kOptionAutoCloseBrackets,
+ 	.name = "Auto-close brackets and code blocks",
++	.description = "Typing an opening bracket or ``` adds the closing one.",
+ });
+ 
+ base::options::toggle KeepIndentationOption({
+ 	.id = kOptionKeepIndentation,
+ 	.name = "Keep indentation",
++	.description = "A new line starts with the same indentation as the "
++		"previous one.",
+ });
+ 
+ base::options::toggle IndentSelectedLinesOption({
+ 	.id = kOptionIndentSelectedLines,
+ 	.name = "Indent selected lines with Tab",
++	.description = "Tab and Shift+Tab shift the selected lines.",
+ });
+ 
+ base::options::option<QString> ComposerIndentationOption({
+@@ -1532,6 +1594,7 @@ base::options::option<QString> ComposerIndentationOption({
+ base::options::toggle HideGiftButtonOption({
+ 	.id = kOptionHideGiftButton,
+ 	.name = "Hide the gift button in the message field",
++	.description = "Removes the gift button from the message field.",
+ });
+ 
+ base::options::toggle HideForeignAgentOption({
+@@ -1558,6 +1621,8 @@ base::options::toggle HideBirthdaysOption({
+ base::options::toggle SilentByDefaultOption({
+ 	.id = kOptionSilentByDefault,
+ 	.name = "Send silently by default",
++	.description = "Messages go without sound unless you pick otherwise in "
++		"the send menu.",
+ });
+ 
+ base::options::toggle SilentPerChatOption({
+@@ -1588,6 +1653,8 @@ base::options::toggle ObservedActivityOption({
+ base::options::toggle TypingHiddenLastSeenOption({
+ 	.id = kOptionTypingHiddenLastSeen,
+ 	.name = "Typing in the chat list with a hidden last seen",
++	.description = "The chat list shows typing even for people who hide "
++		"their last seen.",
+ });
+ 
+ base::options::toggle NoticesOption({
+@@ -1671,6 +1738,8 @@ base::options::toggle VoiceQualityOption({
+ base::options::toggle ConfirmSendOption({
+ 	.id = kOptionConfirmSend,
+ 	.name = "Confirm before sending",
++	.description = "Asks before a message is sent. What to confirm is set "
++		"below.",
+ });
+ 
+ base::options::toggle ConfirmStickersOption({
+@@ -1755,6 +1824,8 @@ base::options::option<QString> ChatBackgroundsOption({
+ base::options::toggle BackgroundMenuOption({
+ 	.id = kOptionBackgroundMenu,
+ 	.name = "Background item in chat menus",
++	.description = "An item in chat menus to set a background just for "
++		"you.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -1767,6 +1838,7 @@ base::options::option<QString> UsernameAliasesOption({
+ base::options::toggle AliasMenuOption({
+ 	.id = kOptionAliasMenu,
+ 	.name = "Alias item in chat menus",
++	.description = "An item in chat menus to give a chat your own @alias.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -1837,6 +1909,7 @@ base::options::option<QString> LocalNamesOption({
+ base::options::toggle LocalNameMenuOption({
+ 	.id = kOptionLocalNameMenu,
+ 	.name = "Name item in chat menus",
++	.description = "An item in chat menus to rename a chat just for you.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -1863,6 +1936,7 @@ base::options::toggle LocalDraftsOption({
+ base::options::toggle DraftsMenuOption({
+ 	.id = kOptionDraftsMenu,
+ 	.name = "Drafts in the send menu",
++	.description = "Saved drafts in the menu of the send button.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -1887,6 +1961,8 @@ base::options::toggle DockedGridOption({
+ base::options::toggle ResizableFieldOption({
+ 	.id = kOptionResizableField,
+ 	.name = "Resizable message field",
++	.description = "Drag the top edge of the message field to make it "
++		"taller.",
+ });
+ 
+ base::options::option<int> FieldHeightOption({
+@@ -1937,6 +2013,7 @@ base::options::toggle ListDatesOption({
+ base::options::toggle BookmarksOption({
+ 	.id = kOptionBookmarks,
+ 	.name = "Message bookmarks",
++	.description = "Bookmark messages to come back to them later.",
+ });
+ 
+ base::options::toggle ReturnPointOption({
+@@ -1948,6 +2025,7 @@ base::options::toggle ReturnPointOption({
+ base::options::toggle NoGesturesOption({
+ 	.id = kOptionNoGestures,
+ 	.name = "Turn off touchpad gestures",
++	.description = "Turns off swipe gestures on the touchpad.",
+ });
+ 
+ base::options::toggle NoSwipeReplyOption({
+@@ -1964,6 +2042,7 @@ base::options::toggle NoSwipeBackOption({
+ base::options::toggle HideCountersOption({
+ 	.id = kOptionHideCounters,
+ 	.name = "Hide unread counters",
++	.description = "Hides unread counters. Where exactly is set below.",
+ });
+ 
+ base::options::toggle HideFolderCountersOption({
+@@ -2041,6 +2120,8 @@ base::options::toggle ChainMentionsOption({
+ base::options::option<QString> LocalPasswordOption({
+ 	.id = kOptionLocalPassword,
+ 	.name = "Local password",
++	.description = "Asks for a local password before paid actions. Which "
++		"ones is set below.",
+ });
+ 
+ base::options::toggle LocalPasswordTransferOption({
+@@ -2112,6 +2193,8 @@ base::options::toggle LocalPasswordBotPaymentsOption({
+ base::options::toggle InvisibleNamesOption({
+ 	.id = kOptionInvisibleNames,
+ 	.name = "Show usernames for invisible names",
++	.description = "Shows the @username instead of a name made of "
++		"invisible characters.",
+ });
+ 
+ base::options::option<QString> InvisibleNamesFallbackOption({
+@@ -2140,6 +2223,8 @@ base::options::toggle ForwardOneByOneOption({
+ base::options::toggle ProfilePhotoBgOption({
+ 	.id = kOptionProfilePhotoBg,
+ 	.name = "Blurred photo as profile background",
++	.description = "The profile header uses the blurred profile photo as "
++		"its background.",
+ });
+ 
+ base::options::toggle ProfilePhotoBgWholeOption({
