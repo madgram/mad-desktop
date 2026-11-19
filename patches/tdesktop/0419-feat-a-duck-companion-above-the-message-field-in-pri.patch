@@ -1,0 +1,959 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "hello, i am forgotten" <me@thisisforgotten.com>
+Date: Thu, 19 Nov 2026 21:20:51 +0300
+Subject: [PATCH] feat: a duck companion above the message field in private
+ chats
+
+---
+ Telegram/CMakeLists.txt                       |   2 +
+ Telegram/Resources/langs/mad_ru.json          |   6 +-
+ .../SourceFiles/history/history_widget.cpp    |   2 +
+ .../SourceFiles/settings/settings_tele.cpp    |   4 +
+ Telegram/SourceFiles/tele/tele_companion.cpp  | 748 ++++++++++++++++++
+ Telegram/SourceFiles/tele/tele_companion.h    |  17 +
+ Telegram/SourceFiles/tele/tele_options.cpp    |  36 +
+ Telegram/SourceFiles/tele/tele_options.h      |   7 +
+ .../SourceFiles/tele/tele_settings_io.cpp     |   2 +
+ 9 files changed, 823 insertions(+), 1 deletion(-)
+ create mode 100644 Telegram/SourceFiles/tele/tele_companion.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_companion.h
+
+diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
+index 10caddd847e9e77b102c415e1f8fcc4e2eaf0d20..5668bd3c79c1604c8c03b573a2515909830692e1 100644
+--- a/Telegram/CMakeLists.txt
++++ b/Telegram/CMakeLists.txt
+@@ -2866,6 +2866,8 @@ PRIVATE
+     tele/tele_collectible_price.h
+     tele/tele_confirm_send.cpp
+     tele/tele_confirm_send.h
++    tele/tele_companion.cpp
++    tele/tele_companion.h
+     tele/tele_communities.cpp
+     tele/tele_communities.h
+     tele/tele_compact_folders.cpp
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 8ff63ac30b037c521e0fdb6161ee5725736bb76e..60befdaacd757c1a05df05d1128b9b6690088499 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2362,5 +2362,9 @@
+   "While it works, the auto-responder posts a message like \"thinking...\" in the chat and then turns it into the reply.": "Пока автоответчик работает, он пишет в чат сообщение вроде «думаю…» и потом превращает его в ответ.",
+   "Auto-reply: %1": "Автоответчик: %1",
+   "Auto-reply in %1 chats": "Автоответчик в %1 чатах",
+-  "Stop all": "Стоп все"
++  "Stop all": "Стоп все",
++  "Companion in private chats": "Компаньон в личных чатах",
++  "A small animated duck above the message field in chats with people: drag it to move, scroll over it to resize.": "Маленькая анимированная утка над полем ввода в переписках с людьми: перетащи, чтобы подвинуть, покрути колесо над ней, чтобы изменить размер.",
++  "Companion placement": "Место компаньона",
++  "Where the companion sits and how big it is.": "Где сидит компаньон и какого он размера."
+ }
+diff --git a/Telegram/SourceFiles/history/history_widget.cpp b/Telegram/SourceFiles/history/history_widget.cpp
+index 7084956ca2b503f4c9ef382bae0e4d2f9e0774d0..60b4e31685a04099ce0c12ce16fd88062d8626d3 100644
+--- a/Telegram/SourceFiles/history/history_widget.cpp
++++ b/Telegram/SourceFiles/history/history_widget.cpp
+@@ -211,6 +211,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "tele/tele_show_pinned.h"
+ #include "tele/tele_jump_plan.h"
+ #include "tele/tele_incoming_fade.h"
++#include "tele/tele_companion.h"
+ #include "media/audio/media_audio.h"
+ #include "media/audio/media_audio_capture.h"
+ #include "media/player/media_player_instance.h"
+@@ -522,6 +523,7 @@ HistoryWidget::HistoryWidget(
+ 			checkPinnedBarState();
+ 		}
+ 	}, lifetime());
++	Tele::SetupCompanion(_scroll.data(), controller);
+ 	_reportMessages->addClickHandler([=] { reportSelectedMessages(); });
+ 	_field->submits(
+ 	) | rpl::on_next([=](Qt::KeyboardModifiers modifiers) {
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index 68c262a74289be66658bf1d655204d2877469fe6..a97d4a804646c3437e47af742dbb9cfa11e5400e 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -2855,6 +2855,10 @@ void FillInterface(SectionBuilder &builder) {
+ 		builder,
+ 		::Tele::kOptionChatCrossfade,
+ 		{ u"chat"_q, u"folder"_q, u"fade"_q, u"animation"_q });
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionChatCompanion,
++		{ u"duck"_q, u"companion"_q, u"mascot"_q, u"утка"_q });
+ 	AddGroupDivider(builder);
+ 	AddGroupTitle(builder, u"Text"_q);
+ 	AddOptionToggle(builder, ::Tele::kOptionLowercase);
+diff --git a/Telegram/SourceFiles/tele/tele_companion.cpp b/Telegram/SourceFiles/tele/tele_companion.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..6537c9c0416b3c54f43ee945afb61d791656782d
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_companion.cpp
+@@ -0,0 +1,748 @@
++#include "tele/tele_companion.h"
++
++#include "base/timer.h"
++#include "data/data_peer.h"
++#include "data/data_user.h"
++#include "dialogs/dialogs_key.h"
++#include "tele/tele_options.h"
++#include "ui/qt_object_factory.h"
++#include "ui/rp_widget.h"
++#include "ui/widgets/elastic_scroll.h"
++#include "window/window_session_controller.h"
++
++#include <QtGui/QGuiApplication>
++#include <QtGui/QLinearGradient>
++#include <QtGui/QPainter>
++#include <QtGui/QPainterPath>
++#include <QtGui/QRadialGradient>
++#include <QtWidgets/QApplication>
++
++namespace Tele {
++namespace {
++
++constexpr auto kLoop = 2.9167;
++constexpr auto kFrame = crl::time(33);
++constexpr auto kMinSize = 56;
++constexpr auto kMaxSize = 240;
++constexpr auto kDefaultSize = 96;
++constexpr auto kDefaultLeft = 4;
++constexpr auto kWheelStep = 8;
++constexpr auto kCornerReserve = 72;
++constexpr auto kBounceDuration = crl::time(450);
++constexpr auto kSpinDuration = crl::time(350);
++constexpr auto kCenterY = 1.26;
++constexpr auto kMaskLeft = 0.2;
++constexpr auto kMaskTop = 0.2;
++constexpr auto kMaskWidth = 0.6;
++constexpr auto kMaskHeight = 0.58;
++
++struct Key {
++	double time = 0.;
++	double value = 0.;
++};
++
++[[nodiscard]] double Sample(const std::vector<Key> &keys, double time) {
++	if (keys.empty()) {
++		return 0.;
++	} else if (time <= keys.front().time) {
++		return keys.front().value;
++	}
++	for (auto i = 1; i != int(keys.size()); ++i) {
++		const auto &to = keys[i];
++		if (time <= to.time) {
++			const auto &from = keys[i - 1];
++			const auto span = to.time - from.time;
++			const auto progress = (span > 0.)
++				? ((time - from.time) / span)
++				: 1.;
++			return from.value + (to.value - from.value) * progress;
++		}
++	}
++	return keys.back().value;
++}
++
++[[nodiscard]] const std::vector<Key> &BlinkKeys() {
++	static const auto result = std::vector<Key>{
++		{ 0., 0. },
++		{ 0.042, 0.259 },
++		{ 0.083, 0.741 },
++		{ 0.125, 1. },
++		{ 0.167, 0.741 },
++		{ 0.208, 0.259 },
++		{ 0.25, 0. },
++		{ 0.625, 0. },
++		{ 0.667, 0.259 },
++		{ 0.708, 0.741 },
++		{ 0.75, 1. },
++		{ 0.792, 0.741 },
++		{ 0.833, 0.259 },
++		{ 0.875, 0. },
++		{ 1.917, 0. },
++		{ 1.958, 0.259 },
++		{ 2., 0.741 },
++		{ 2.042, 1. },
++		{ 2.375, 1. },
++		{ 2.417, 0.741 },
++		{ 2.458, 0.259 },
++		{ 2.5, 0. },
++	};
++	return result;
++}
++
++[[nodiscard]] const std::vector<Key> &MouthKeys() {
++	static const auto result = std::vector<Key>{
++		{ 0., 0. },
++		{ 0.208, 0. },
++		{ 0.25, 0.259 },
++		{ 0.292, 0.741 },
++		{ 0.333, 1. },
++		{ 2.167, 1. },
++		{ 2.208, 0.926 },
++		{ 2.25, 0.741 },
++		{ 2.292, 0.5 },
++		{ 2.333, 0.259 },
++		{ 2.375, 0.074 },
++		{ 2.417, 0. },
++	};
++	return result;
++}
++
++[[nodiscard]] const std::vector<Key> &SquashKeys() {
++	static const auto result = std::vector<Key>{
++		{ 0., 1. },
++		{ 0.042, 1.013 },
++		{ 0.083, 1.037 },
++		{ 0.125, 1.05 },
++		{ 0.167, 1.042 },
++		{ 0.208, 1.025 },
++		{ 0.25, 1.008 },
++		{ 0.292, 1. },
++		{ 0.625, 1. },
++		{ 0.667, 1.013 },
++		{ 0.708, 1.037 },
++		{ 0.75, 1.05 },
++		{ 0.792, 1.042 },
++		{ 0.833, 1.025 },
++		{ 0.875, 1.008 },
++		{ 0.917, 1. },
++		{ 1.25, 1. },
++		{ 1.292, 1.003 },
++		{ 1.333, 1.01 },
++		{ 1.375, 1.017 },
++		{ 1.417, 1.02 },
++		{ 1.458, 1.015 },
++		{ 1.5, 1.005 },
++		{ 1.542, 1. },
++	};
++	return result;
++}
++
++[[nodiscard]] const std::vector<Key> &TurnKeys() {
++	static const auto result = std::vector<Key>{
++		{ 0., 0. },
++		{ 0.208, 0. },
++		{ 0.375, 1. },
++		{ 1.708, 1. },
++		{ 2., 0. },
++	};
++	return result;
++}
++
++[[nodiscard]] const std::vector<Key> &NodKeys() {
++	static const auto result = std::vector<Key>{
++		{ 0., 0. },
++		{ 0.375, 0. },
++		{ 0.75, -0.09 },
++		{ 1.54, 0.03 },
++		{ 2., 0. },
++	};
++	return result;
++}
++
++[[nodiscard]] const std::vector<Key> &WaveKeys() {
++	static const auto result = std::vector<Key>{
++		{ 0., 0. },
++		{ 0.54, 0. },
++		{ 0.667, 150. },
++		{ 0.792, 15. },
++		{ 0.917, 155. },
++		{ 1.042, 20. },
++		{ 1.167, 155. },
++		{ 1.458, 18. },
++		{ 2.08, 0. },
++	};
++	return result;
++}
++
++[[nodiscard]] const std::vector<Key> &LiftKeys() {
++	static const auto result = std::vector<Key>{
++		{ 0., 0. },
++		{ 0.6, 0. },
++		{ 1.1, 6. },
++		{ 1.7, 0. },
++	};
++	return result;
++}
++
++[[nodiscard]] const std::vector<Key> &BounceKeys() {
++	static const auto result = std::vector<Key>{
++		{ 0., 1. },
++		{ 1. / 3., 1.18 },
++		{ 2. / 3., 0.94 },
++		{ 1., 1. },
++	};
++	return result;
++}
++
++struct Placement {
++	int x = kDefaultLeft;
++	int bottom = 0;
++	int size = kDefaultSize;
++};
++
++[[nodiscard]] Placement LoadPlacement() {
++	const auto parts = CompanionPlacement().split(QChar(';'));
++	auto result = Placement();
++	if (parts.size() == 3) {
++		result.x = parts[0].toInt();
++		result.bottom = parts[1].toInt();
++		result.size = std::clamp(parts[2].toInt(), kMinSize, kMaxSize);
++	}
++	return result;
++}
++
++void SavePlacement(const Placement &placement) {
++	SetCompanionPlacement(u"%1;%2;%3"_q.arg(
++		QString::number(placement.x),
++		QString::number(placement.bottom),
++		QString::number(placement.size)));
++}
++
++[[nodiscard]] const QPainterPath &BodyPath() {
++	static const auto result = [] {
++		auto belly = QPainterPath();
++		belly.addRoundedRect(QRectF(-0.93, 0., 1.86, 0.95), 0.35, 0.35);
++		auto head = QPainterPath();
++		head.addEllipse(QPointF(0., 1.55), 0.97, 0.97);
++		return belly.united(head);
++	}();
++	return result;
++}
++
++void StackAbove(not_null<QWidget*> widget, not_null<QWidget*> below) {
++	const auto parent = widget->parentWidget();
++	if (!parent || below->parentWidget() != parent) {
++		return;
++	}
++	auto found = false;
++	for (const auto child : parent->children()) {
++		if (!found) {
++			found = (child == below.get());
++		} else if (child != widget.get() && child->isWidgetType()) {
++			widget->stackUnder(static_cast<QWidget*>(child));
++			return;
++		}
++	}
++	if (found) {
++		widget->raise();
++	}
++}
++
++class Companion final : public Ui::RpWidget {
++public:
++	explicit Companion(not_null<Ui::ElasticScroll*> scroll);
++
++	void setArea(QRect area);
++	void setShown(bool shown);
++	void reloadPlacement();
++
++protected:
++	void paintEvent(QPaintEvent *e) override;
++	void showEvent(QShowEvent *e) override;
++	void hideEvent(QHideEvent *e) override;
++	void mousePressEvent(QMouseEvent *e) override;
++	void mouseMoveEvent(QMouseEvent *e) override;
++	void mouseReleaseEvent(QMouseEvent *e) override;
++	void mouseDoubleClickEvent(QMouseEvent *e) override;
++	void wheelEvent(QWheelEvent *e) override;
++
++private:
++	[[nodiscard]] int side() const;
++	[[nodiscard]] bool fits() const;
++	[[nodiscard]] bool fitsSize(int size) const;
++	[[nodiscard]] crl::time clock() const;
++	void restack();
++	[[nodiscard]] QPoint clamped(QPoint position) const;
++	void place();
++	void savePosition();
++	void refreshVisibility();
++	void refreshTimer();
++	void refreshMask();
++	void startBounce();
++	void paintWing(QPainter &p, double side, double angle) const;
++	void paintEye(
++		QPainter &p,
++		QPointF center,
++		double scale,
++		double blink) const;
++	void paintBeak(
++		QPainter &p,
++		QPointF offset,
++		double scale,
++		double open) const;
++
++	const not_null<Ui::ElasticScroll*> _scroll;
++	Placement _placement;
++	QRect _area;
++	bool _shown = false;
++	bool _pressed = false;
++	bool _moved = false;
++	bool _doubleClicked = false;
++	int _wheelDelta = 0;
++	QPoint _pressGlobal;
++	QPoint _pressPosition;
++	crl::time _started = 0;
++	crl::time _bounceStarted = 0;
++	crl::time _spinStarted = 0;
++	crl::time _pausedAt = 0;
++	base::Timer _timer;
++	base::Timer _bounceTimer;
++
++};
++
++Companion::Companion(not_null<Ui::ElasticScroll*> scroll)
++: RpWidget(scroll.get())
++, _scroll(scroll)
++, _placement(LoadPlacement())
++, _started(crl::now())
++, _timer([=] { update(); })
++, _bounceTimer([=] { startBounce(); }) {
++	setCursor(Qt::OpenHandCursor);
++	QObject::connect(
++		qApp,
++		&QGuiApplication::applicationStateChanged,
++		this,
++		[=] { refreshTimer(); });
++	hide();
++	restack();
++}
++
++int Companion::side() const {
++	return style::ConvertScale(_placement.size);
++}
++
++bool Companion::fits() const {
++	return fitsSize(_placement.size);
++}
++
++bool Companion::fitsSize(int size) const {
++	const auto scaled = style::ConvertScale(size);
++	return (_area.height() >= int(scaled * kMaskHeight))
++		&& (_area.width()
++			>= int(scaled * kMaskWidth) + style::ConvertScale(kCornerReserve));
++}
++
++crl::time Companion::clock() const {
++	return _pausedAt ? _pausedAt : crl::now();
++}
++
++void Companion::restack() {
++	if (const auto content = _scroll->widget()) {
++		StackAbove(this, content);
++	} else {
++		lower();
++	}
++}
++
++void Companion::reloadPlacement() {
++	if (_pressed) {
++		return;
++	}
++	_placement = LoadPlacement();
++	place();
++	refreshVisibility();
++}
++
++void Companion::setArea(QRect area) {
++	_area = area;
++	if (!_pressed) {
++		place();
++	}
++	refreshVisibility();
++}
++
++void Companion::setShown(bool shown) {
++	_shown = shown;
++	refreshVisibility();
++}
++
++void Companion::refreshVisibility() {
++	const auto visible = _shown && fits();
++	if (visible && isHidden()) {
++		place();
++		restack();
++		show();
++	} else if (!visible && !isHidden()) {
++		hide();
++	}
++}
++
++void Companion::refreshTimer() {
++	const auto active = isVisible()
++		&& (QGuiApplication::applicationState() == Qt::ApplicationActive);
++	if (active) {
++		if (_pausedAt) {
++			const auto shift = crl::now() - base::take(_pausedAt);
++			_started += shift;
++			if (_bounceStarted) {
++				_bounceStarted += shift;
++			}
++			if (_spinStarted) {
++				_spinStarted += shift;
++			}
++		}
++		if (!_timer.isActive()) {
++			_timer.callEach(kFrame);
++		}
++	} else if (!_pausedAt) {
++		_timer.cancel();
++		_pausedAt = crl::now();
++		update();
++	}
++}
++
++QPoint Companion::clamped(QPoint position) const {
++	const auto size = width();
++	const auto bottom = _area.y() + _area.height();
++	const auto minX = -int(size * kMaskLeft);
++	const auto maxX = std::max(
++		_area.width()
++			- int(size * (kMaskLeft + kMaskWidth))
++			- style::ConvertScale(kCornerReserve),
++		minX);
++	const auto minY = _area.y() - int(size * kMaskTop);
++	const auto maxY = std::max(
++		bottom - int(size * (kMaskTop + kMaskHeight)),
++		minY);
++	return QPoint(
++		std::clamp(position.x(), minX, maxX),
++		std::clamp(position.y(), minY, maxY));
++}
++
++void Companion::place() {
++	if (_area.isEmpty()) {
++		return;
++	}
++	const auto size = side();
++	const auto bottom = _area.y() + _area.height();
++	if (width() != size) {
++		resize(size, size);
++		refreshMask();
++	}
++	move(clamped(QPoint(_placement.x, bottom - _placement.bottom - size)));
++}
++
++void Companion::savePosition() {
++	_placement.x = x();
++	_placement.bottom = (_area.y() + _area.height()) - (y() + height());
++	SavePlacement(_placement);
++}
++
++void Companion::refreshMask() {
++	const auto size = width();
++	setMask(QRegion(QRect(
++		int(size * kMaskLeft),
++		int(size * kMaskTop),
++		int(size * kMaskWidth),
++		int(size * kMaskHeight))));
++}
++
++void Companion::startBounce() {
++	const auto now = crl::now();
++	if (!_bounceStarted || (now - _bounceStarted >= kBounceDuration)) {
++		_bounceStarted = now;
++	}
++}
++
++void Companion::showEvent(QShowEvent *e) {
++	RpWidget::showEvent(e);
++	refreshTimer();
++}
++
++void Companion::hideEvent(QHideEvent *e) {
++	RpWidget::hideEvent(e);
++	refreshTimer();
++}
++
++void Companion::mousePressEvent(QMouseEvent *e) {
++	if (e->button() != Qt::LeftButton) {
++		return;
++	}
++	_pressed = true;
++	_moved = false;
++	_pressGlobal = e->globalPos();
++	_pressPosition = pos();
++	setCursor(Qt::ClosedHandCursor);
++}
++
++void Companion::mouseMoveEvent(QMouseEvent *e) {
++	if (!_pressed) {
++		return;
++	}
++	const auto delta = e->globalPos() - _pressGlobal;
++	if (!_moved
++		&& delta.manhattanLength() < QApplication::startDragDistance()) {
++		return;
++	}
++	_moved = true;
++	move(clamped(_pressPosition + delta));
++}
++
++void Companion::mouseReleaseEvent(QMouseEvent *e) {
++	if (!_pressed || e->button() != Qt::LeftButton) {
++		return;
++	}
++	_pressed = false;
++	setCursor(Qt::OpenHandCursor);
++	if (_moved) {
++		savePosition();
++	} else if (!_doubleClicked) {
++		_bounceTimer.callOnce(QApplication::doubleClickInterval());
++	}
++	_doubleClicked = false;
++}
++
++void Companion::mouseDoubleClickEvent(QMouseEvent *e) {
++	if (e->button() != Qt::LeftButton) {
++		return;
++	}
++	_bounceTimer.cancel();
++	_spinStarted = crl::now();
++	mousePressEvent(e);
++	_doubleClicked = true;
++}
++
++void Companion::wheelEvent(QWheelEvent *e) {
++	if (e->phase() == Qt::ScrollMomentum) {
++		return;
++	}
++	_wheelDelta += e->angleDelta().y();
++	const auto steps = _wheelDelta / QWheelEvent::DefaultDeltasPerStep;
++	if (!steps) {
++		return;
++	}
++	_wheelDelta -= steps * QWheelEvent::DefaultDeltasPerStep;
++	auto size = std::clamp(
++		_placement.size + steps * kWheelStep,
++		kMinSize,
++		kMaxSize);
++	while (size > _placement.size && !fitsSize(size)) {
++		size = std::max(size - kWheelStep, _placement.size);
++	}
++	if (size == _placement.size) {
++		return;
++	}
++	const auto was = width();
++	const auto now = style::ConvertScale(size);
++	_placement.x = x() + (was - now) / 2;
++	_placement.bottom = (_area.y() + _area.height()) - (y() + height());
++	_placement.size = size;
++	SavePlacement(_placement);
++	place();
++	refreshVisibility();
++}
++
++void Companion::paintEvent(QPaintEvent *e) {
++	auto p = QPainter(this);
++	p.setRenderHint(QPainter::Antialiasing);
++
++	const auto now = clock();
++	const auto time = std::fmod((now - _started) / 1000., kLoop);
++	auto bounce = 1.;
++	if (_bounceStarted) {
++		const auto progress = (now - _bounceStarted)
++			/ double(kBounceDuration);
++		if (progress >= 1.) {
++			_bounceStarted = 0;
++		} else {
++			bounce = Sample(BounceKeys(), progress);
++		}
++	}
++	auto spin = 1.;
++	if (_spinStarted) {
++		const auto progress = (now - _spinStarted) / double(kSpinDuration);
++		if (progress >= 1.) {
++			_spinStarted = 0;
++		} else {
++			const auto eased = 1. - std::pow(1. - progress, 3.);
++			spin = std::cos(M_PI * (1. - eased));
++			if (std::abs(spin) < 0.05) {
++				spin = (spin < 0.) ? -0.05 : 0.05;
++			}
++		}
++	}
++
++	const auto size = double(width());
++	const auto unit = size / 6.;
++	p.translate(size / 2., size / 2. + kCenterY * unit);
++	p.scale(unit, -unit);
++
++	p.translate(0., kCenterY);
++	p.scale(bounce * spin, bounce);
++	p.translate(0., -kCenterY);
++
++	const auto squash = Sample(SquashKeys(), time);
++	p.translate(0., 0.02);
++	p.scale(squash, 2. - squash);
++	p.translate(0., -0.02);
++
++	const auto &body = BodyPath();
++	auto gradient = QRadialGradient(QPointF(-0.35, 1.95), 2.6);
++	gradient.setColorAt(0., QColor(0xFF, 0xE4, 0x5A));
++	gradient.setColorAt(0.5, QColor(0xFF, 0xD5, 0x27));
++	gradient.setColorAt(1., QColor(0xF2, 0xB2, 0x1E));
++	p.setPen(QPen(QColor(0xE6, 0x9A, 0x20, 70), 0.05));
++	p.setBrush(gradient);
++	p.drawPath(body);
++
++	auto shine = QRadialGradient(QPointF(-0.42, 2.05), 0.34);
++	shine.setColorAt(0., QColor(255, 255, 255, 170));
++	shine.setColorAt(1., QColor(255, 255, 255, 0));
++	p.setPen(Qt::NoPen);
++	p.setBrush(shine);
++	p.drawEllipse(QPointF(-0.42, 2.05), 0.34, 0.24);
++
++	paintWing(p, -1., Sample(LiftKeys(), time));
++	paintWing(p, 1., Sample(WaveKeys(), time));
++
++	const auto turn = Sample(TurnKeys(), time);
++	const auto nod = Sample(NodKeys(), time);
++	const auto blink = Sample(BlinkKeys(), time);
++	const auto open = Sample(MouthKeys(), time);
++	p.save();
++	p.setClipPath(body);
++	paintEye(
++		p,
++		QPointF(-0.5 - 0.4 * turn, 1.51 + nod),
++		1. - 0.6 * turn,
++		blink);
++	paintEye(
++		p,
++		QPointF(0.5 - 0.68 * turn, 1.51 + nod),
++		1. - 0.15 * turn,
++		blink);
++	paintBeak(p, QPointF(-0.67 * turn, nod), 1. - 0.15 * turn, open);
++	p.restore();
++}
++
++void Companion::paintWing(QPainter &p, double side, double angle) const {
++	p.save();
++	const auto pivot = QPointF(0.78 * side, 0.9);
++	p.translate(pivot);
++	p.rotate(angle * side);
++	p.translate(-pivot);
++	p.translate(0.9 * side, 0.64);
++	p.rotate(25. * side);
++	auto gradient = QLinearGradient(QPointF(0., 0.3), QPointF(0., -0.3));
++	gradient.setColorAt(0., QColor(0xF8, 0xC8, 0x22));
++	gradient.setColorAt(1., QColor(0xE0, 0xA0, 0x18));
++	p.setPen(QPen(QColor(0xE6, 0x9A, 0x20, 90), 0.03));
++	p.setBrush(gradient);
++	p.drawEllipse(QPointF(0., 0.), 0.13, 0.3);
++	p.restore();
++}
++
++void Companion::paintEye(
++		QPainter &p,
++		QPointF center,
++		double scale,
++		double blink) const {
++	if (blink > 0.85) {
++		auto path = QPainterPath();
++		path.moveTo(center.x() - 0.18 * scale, center.y() - 0.01);
++		path.quadTo(
++			center.x(),
++			center.y() - 0.19,
++			center.x() + 0.18 * scale,
++			center.y() - 0.01);
++		p.setPen(QPen(Qt::black, 0.06, Qt::SolidLine, Qt::RoundCap));
++		p.setBrush(Qt::NoBrush);
++		p.drawPath(path);
++		return;
++	}
++	p.setPen(Qt::NoPen);
++	p.setBrush(Qt::black);
++	p.drawEllipse(
++		center,
++		0.18 * scale,
++		std::max(0.235 * (1. - blink), 0.02));
++	if (blink < 0.5) {
++		p.setBrush(QColor(0xF8, 0xF8, 0xF8));
++		p.drawEllipse(
++			QPointF(center.x() - 0.075 * scale, center.y() + 0.075),
++			0.05 * scale,
++			0.07 * (1. - blink));
++	}
++}
++
++void Companion::paintBeak(
++		QPainter &p,
++		QPointF offset,
++		double scale,
++		double open) const {
++	p.save();
++	p.translate(offset);
++	p.scale(scale, 1.);
++	const auto orange = QColor(0xF8, 0x58, 0x18);
++	const auto drop = 0.1 * open;
++	p.setPen(Qt::NoPen);
++	p.setBrush(orange);
++	p.drawEllipse(QPointF(0., 1.2 - drop), 0.3, 0.08 + 0.03 * open);
++	if (open > 0.05) {
++		p.setBrush(QColor(0xB8, 0x30, 0x30));
++		p.drawEllipse(QPointF(0., 1.17 - drop * 0.5), 0.19, 0.03 + 0.07 * open);
++		p.setBrush(QColor(0xF0, 0x90, 0x50));
++		p.drawEllipse(QPointF(0., 1.11 - drop * 0.6), 0.09, 0.02 + 0.02 * open);
++	}
++	auto upper = QPainterPath();
++	upper.moveTo(0., 1.62);
++	upper.cubicTo(0.1, 1.55, 0.2, 1.4, 0.35, 1.27);
++	upper.cubicTo(0.3, 1.21, 0.1, 1.19, 0., 1.19);
++	upper.cubicTo(-0.1, 1.19, -0.3, 1.21, -0.35, 1.27);
++	upper.cubicTo(-0.2, 1.4, -0.1, 1.55, 0., 1.62);
++	p.setBrush(orange);
++	p.drawPath(upper);
++	p.restore();
++}
++
++} // namespace
++
++void SetupCompanion(
++		not_null<Ui::ElasticScroll*> scroll,
++		not_null<Window::SessionController*> controller) {
++	const auto companion = Ui::CreateChild<Companion>(scroll.get());
++	scroll->sizeValue(
++	) | rpl::on_next([=](QSize size) {
++		companion->setArea(QRect(QPoint(), size));
++	}, companion->lifetime());
++	CompanionPlacementChanges(
++	) | rpl::on_next([=] {
++		companion->reloadPlacement();
++	}, companion->lifetime());
++	const auto refresh = [=] {
++		const auto peer = controller->activeChatCurrent().peer();
++		const auto user = peer ? peer->asUser() : nullptr;
++		companion->setShown(ChatCompanion()
++			&& user
++			&& !user->isBot()
++			&& !user->isSelf());
++	};
++	controller->activeChatValue(
++	) | rpl::on_next([=](const Dialogs::Key &) {
++		refresh();
++	}, companion->lifetime());
++	ChatCompanionChanges(
++	) | rpl::on_next(refresh, companion->lifetime());
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_companion.h b/Telegram/SourceFiles/tele/tele_companion.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..cba89f24abcda013d631a396c6dce50af55298eb
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_companion.h
+@@ -0,0 +1,17 @@
++#pragma once
++
++namespace Ui {
++class ElasticScroll;
++} // namespace Ui
++
++namespace Window {
++class SessionController;
++} // namespace Window
++
++namespace Tele {
++
++void SetupCompanion(
++	not_null<Ui::ElasticScroll*> scroll,
++	not_null<Window::SessionController*> controller);
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index 71c892e07ea57f731d010ad9246cb1ebba94b467..382208b8b497190c88730338d0e4273fc50a428e 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -27,6 +27,8 @@ const char kOptionAgentChatActions[] = "tele-agent-chat-actions";
+ const char kOptionAgentForward[] = "tele-agent-forward";
+ const char kOptionAgentAutoReplyWeb[] = "tele-agent-auto-reply-web";
+ const char kOptionAgentAutoReplyStatus[] = "tele-agent-auto-reply-status";
++const char kOptionChatCompanion[] = "tele-chat-companion";
++const char kOptionCompanionPlacement[] = "tele-companion-placement";
+ 
+ 
+ const char kOptionHideStories[] = "tele-hide-stories";
+@@ -893,6 +895,20 @@ base::options::toggle AgentAutoReplyStatusOption({
+ 		"reply.",
+ });
+ 
++base::options::toggle ChatCompanionOption({
++	.id = kOptionChatCompanion,
++	.name = "Companion in private chats",
++	.description = "A small animated duck above the message field in "
++		"chats with people: drag it to move, scroll over it to resize.",
++});
++
++base::options::option<QString> CompanionPlacementOption({
++	.id = kOptionCompanionPlacement,
++	.name = "Companion placement",
++	.description = "Where the companion sits and how big it is.",
++	.defaultValue = QString(),
++});
++
+ base::options::toggle SmoothScrollOption({
+ 	.id = kOptionSmoothScroll,
+ 	.name = "Smooth wheel scrolling",
+@@ -3948,6 +3964,26 @@ rpl::producer<> HideGiftButtonChanges() {
+ 	return HideGiftButtonOption.changes();
+ }
+ 
++bool ChatCompanion() {
++	return ChatCompanionOption.value();
++}
++
++rpl::producer<> ChatCompanionChanges() {
++	return ChatCompanionOption.changes();
++}
++
++QString CompanionPlacement() {
++	return CompanionPlacementOption.value();
++}
++
++void SetCompanionPlacement(const QString &value) {
++	CompanionPlacementOption.set(value);
++}
++
++rpl::producer<> CompanionPlacementChanges() {
++	return CompanionPlacementOption.changes();
++}
++
+ bool HideForeignAgent() {
+ 	return HideForeignAgentOption.value();
+ }
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index 6f2278bbd9eef29bc427d341d0d943ea70cf21db..64daf42e086e431981fb14e914f6bfaa47339ae3 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -23,6 +23,8 @@ extern const char kOptionAgentChatActions[];
+ extern const char kOptionAgentForward[];
+ extern const char kOptionAgentAutoReplyWeb[];
+ extern const char kOptionAgentAutoReplyStatus[];
++extern const char kOptionChatCompanion[];
++extern const char kOptionCompanionPlacement[];
+ [[nodiscard]] bool MadBadgesEnabled();
+ 
+ extern const char kOptionHideStories[];
+@@ -623,6 +625,11 @@ void SetComposerIndentation(const QString &value);
+ [[nodiscard]] rpl::producer<> HideGiftButtonChanges();
+ [[nodiscard]] bool HideRecordButton();
+ [[nodiscard]] rpl::producer<> HideRecordButtonChanges();
++[[nodiscard]] bool ChatCompanion();
++[[nodiscard]] rpl::producer<> ChatCompanionChanges();
++[[nodiscard]] QString CompanionPlacement();
++void SetCompanionPlacement(const QString &value);
++[[nodiscard]] rpl::producer<> CompanionPlacementChanges();
+ [[nodiscard]] bool HideForeignAgent();
+ [[nodiscard]] rpl::producer<> HideForeignAgentChanges();
+ [[nodiscard]] bool HideBirthdays();
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index ade7b41ac2d40f460a84b8194cd58f68ebc60b92..3f78961bf75144627c40afc8984aa7db43656261 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -308,6 +308,8 @@ struct Spec {
+ 		Toggle(kOptionAgentForward),
+ 		Toggle(kOptionAgentAutoReplyWeb),
+ 		Toggle(kOptionAgentAutoReplyStatus),
++		Toggle(kOptionChatCompanion),
++		Internal(kOptionCompanionPlacement),
+ 		Toggle(kOptionHideForeignAgent),
+ 		Toggle(kOptionHideBirthdays),
+ 		Toggle(kOptionSilentByDefault),
