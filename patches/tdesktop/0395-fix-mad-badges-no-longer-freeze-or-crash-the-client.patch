@@ -268,7 +268,7 @@ index fc803fb6bb1e448a6850e2dda4b9b0838471b55a..9dac3f983cd7b885ecb416540a92f98f
  [[nodiscard]] std::optional<MadRegistry> DecodeMadRegistry(
  	const QByteArray &envelope,
 diff --git a/Telegram/SourceFiles/tele/tests/mad_registry_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_registry_tests.cpp
-index 081cdf2fa42b2caeb87d98093260e9c1270bf042..508c4e9db557a05d1ca4a4db771e8fc9b89d8fe5 100644
+index 081cdf2fa42b2caeb87d98093260e9c1270bf042..8078213556aa54c381db69c2d753bf49adddf055 100644
 --- a/Telegram/SourceFiles/tele/tests/mad_registry_tests.cpp
 +++ b/Telegram/SourceFiles/tele/tests/mad_registry_tests.cpp
 @@ -118,6 +118,14 @@ int main(int argc, char **argv) {
@@ -279,7 +279,7 @@ index 081cdf2fa42b2caeb87d98093260e9c1270bf042..508c4e9db557a05d1ca4a4db771e8fc9
 +	const auto signaturesAfter = Tele::MadTargetSignatures(*named, 1700000010);
 +	Require(signaturesBefore.contains(QStringLiteral("channel:5")), "signature before expiry");
 +	Require(!signaturesAfter.contains(QStringLiteral("channel:5")), "no signature after expiry");
-+	Require(Tele::ChangedMadTargets(signaturesBefore, signaturesAfter) == QStringList{ QStringLiteral("channel:5") }, "only expired target changed");
++	Require(Tele::ChangedMadTargets(signaturesBefore, signaturesAfter) == QStringList{ QStringLiteral("channel:5"), QStringLiteral("channel:9007199254740993") }, "only expired targets changed");
 +	Require(Tele::ChangedMadTargets(signaturesAfter, signaturesAfter).isEmpty(), "nothing changed");
 +	Require(Tele::ChangedMadTargets({}, signaturesAfter).size() == signaturesAfter.size(), "new targets changed");
 +	Require(Tele::MadTargetSignatures(*parsed, 1700000000) != Tele::MadTargetSignatures(*named, 1700000000), "names change signatures");
