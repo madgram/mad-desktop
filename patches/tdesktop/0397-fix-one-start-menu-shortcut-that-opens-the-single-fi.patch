@@ -1,0 +1,276 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 02:56:12 +0200
+Subject: [PATCH] fix: one start menu shortcut that opens the single-file
+ profile
+
+---
+ Telegram/CMakeLists.txt                       |  2 +
+ Telegram/Resources/langs/mad_ru.json          |  1 +
+ Telegram/SourceFiles/core/launcher.cpp        |  3 ++
+ .../win/windows_app_user_model_id.cpp         | 16 +++++++-
+ .../SourceFiles/settings/settings_tele.cpp    |  5 +++
+ Telegram/SourceFiles/tele/tele_app_icons.cpp  | 11 ++++++
+ Telegram/SourceFiles/tele/tele_app_icons.h    |  1 +
+ .../SourceFiles/tele/tele_single_paths.cpp    | 38 +++++++++++++++++++
+ Telegram/SourceFiles/tele/tele_single_paths.h | 10 +++++
+ .../tele/tests/mad_logic_tests.cpp            | 32 ++++++++++++++++
+ Telegram/cmake/mad_tests.cmake                | 13 +++++++
+ 11 files changed, 131 insertions(+), 1 deletion(-)
+ create mode 100644 Telegram/SourceFiles/tele/tele_single_paths.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_single_paths.h
+ create mode 100644 Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+
+diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
+index 46ba5bb6b4615d3ea5fbed9151d2a1e21178d628..e1f59f22054b29398c6dfaf4cc46963e66d04ab4 100644
+--- a/Telegram/CMakeLists.txt
++++ b/Telegram/CMakeLists.txt
+@@ -2660,6 +2660,8 @@ PRIVATE
+     tele/tele_mad_badges.h
+     tele/tele_mad_badge_card.cpp
+     tele/tele_mad_badge_card.h
++    tele/tele_single_paths.cpp
++    tele/tele_single_paths.h
+     tele/tele_mad_names.cpp
+     tele/tele_mad_names.h
+     tele/tele_snippets.cpp
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index b9254be514facf3269f554dd04093782b1eff93c..c7e3a4c92d53ce13a3e78bd96abb9a50ee3b5d24 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -1196,6 +1196,7 @@
+   "Reset the folder? This chat's files will go to the main download folder.": "Сбросить папку? Файлы этого чата будут сохраняться в общую папку загрузок.",
+   "Reset the playground": "Сбросить песочницу",
+   "Reset to default": "Вернуть настройки по умолчанию",
++  "Windows search shows a second mad from an old installer. Remove it by deleting %1 as an administrator.": "В поиске Windows виден второй mad от старого установщика. Чтобы его убрать, удали %1 от имени администратора.",
+   "Resizable message field": "Менять высоту поля сообщения",
+   "Resolving ": "Поиск пользователей: ",
+   "Restart to update": "Перезапустить для обновления",
+diff --git a/Telegram/SourceFiles/core/launcher.cpp b/Telegram/SourceFiles/core/launcher.cpp
+index 0cc981d8be49e2196193ba577d5ee43ce1a7c418..de12e9186731ada945f6976e04045fc46ab2f5a2 100644
+--- a/Telegram/SourceFiles/core/launcher.cpp
++++ b/Telegram/SourceFiles/core/launcher.cpp
+@@ -18,6 +18,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "core/sandbox.h"
+ #include "core/version.h"
+ #include "tele/tele_launch_flags.h"
++#include "tele/tele_single_paths.h"
+ #include "base/concurrent_timer.h"
+ #include "base/options.h"
+ 
+@@ -663,6 +664,8 @@ void Launcher::processArguments() {
+ 	_customWorkingDir = parseResult.value("-workdir", {}).join(QString());
+ 	if (!_customWorkingDir.isEmpty()) {
+ 		_customWorkingDir = QDir(_customWorkingDir).absolutePath() + '/';
++	} else {
++		_customWorkingDir = Tele::SingleFileWorkdir(cExeDir());
+ 	}
+ 
+ 	const auto startUrls = parseResult.value("--", {});
+diff --git a/Telegram/SourceFiles/platform/win/windows_app_user_model_id.cpp b/Telegram/SourceFiles/platform/win/windows_app_user_model_id.cpp
+index a0c9263477ce35419eb8c7671e323ea6a2e694a4..cc8eb53dd65c38b9d96a58e2f7bcd7858c83c73b 100644
+--- a/Telegram/SourceFiles/platform/win/windows_app_user_model_id.cpp
++++ b/Telegram/SourceFiles/platform/win/windows_app_user_model_id.cpp
+@@ -22,6 +22,14 @@ namespace {
+ 
+ constexpr auto kMaxFileLen = MAX_PATH * 2;
+ 
++[[nodiscard]] std::wstring ShortcutArguments() {
++	return Core::Launcher::Instance().customWorkingDir()
++		? (u"-workdir \"%1\""_q.arg(
++			QDir::toNativeSeparators(
++				QDir(cWorkingDir()).absolutePath()))).toStdWString()
++		: std::wstring();
++}
++
+ const PROPERTYKEY pkey_AppUserModel_ID = { { 0x9F4C2855, 0x9F79, 0x4B39, { 0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3 } }, 5 };
+ const PROPERTYKEY pkey_AppUserModel_StartPinOption = { { 0x9F4C2855, 0x9F79, 0x4B39, { 0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3 } }, 12 };
+ const PROPERTYKEY pkey_AppUserModel_ToastActivator = { { 0x9F4C2855, 0x9F79, 0x4B39, { 0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3 } }, 26 };
+@@ -280,6 +288,12 @@ bool validateShortcutAt(const QString &path) {
+ 		return false;
+ 	}
+ 
++	WCHAR szGotArguments[kMaxFileLen] = { 0 };
++	hr = shellLink->GetArguments(szGotArguments, kMaxFileLen);
++	if (!SUCCEEDED(hr) || ShortcutArguments() != szGotArguments) {
++		return false;
++	}
++
+ 	auto propertyStore = shellLink.try_as<IPropertyStore>();
+ 	if (!propertyStore) {
+ 		return false;
+@@ -391,7 +405,7 @@ bool ValidateShortcut() {
+ 		return false;
+ 	}
+ 
+-	hr = shellLink->SetArguments(L"");
++	hr = shellLink->SetArguments(ShortcutArguments().c_str());
+ 	if (!SUCCEEDED(hr)) {
+ 		return false;
+ 	}
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index 80655c855b9b6101c1338be889f1768174a95413..b51267cd6d1bacf58790fb515d716b41f6fbf24b 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -2726,6 +2726,11 @@ void AddAppIcons(SectionBuilder &builder) {
+ 				}, &st::menuIconRestore);
+ 			});
+ 	}
++	if (const auto legacy = ::Tele::LegacyInstallerShortcut(); !legacy.isEmpty()) {
++		builder.addDividerText(rpl::single(::Tele::Tr(
++			u"Windows search shows a second mad from an old installer. "
++			"Remove it by deleting %1 as an administrator."_q).arg(legacy)));
++	}
+ }
+ 
+ void PlaybackVolumesBox(not_null<Ui::GenericBox*> box) {
+diff --git a/Telegram/SourceFiles/tele/tele_app_icons.cpp b/Telegram/SourceFiles/tele/tele_app_icons.cpp
+index a6af57df53a3f644f675f648e2e2f3b73142e72c..865007eaa4a246229a5ef119c11518f11058dd9e 100644
+--- a/Telegram/SourceFiles/tele/tele_app_icons.cpp
++++ b/Telegram/SourceFiles/tele/tele_app_icons.cpp
+@@ -395,4 +395,15 @@ QByteArray CustomIconContent(IconSlot slot) {
+ 	return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+ }
+ 
++QString LegacyInstallerShortcut() {
++#ifdef Q_OS_WIN
++	const auto programs = KnownFolder(FOLDERID_CommonPrograms);
++	const auto path = programs + u"/mad.lnk"_q;
++	if (!programs.isEmpty() && QFile::exists(path)) {
++		return QDir::toNativeSeparators(path);
++	}
++#endif // Q_OS_WIN
++	return QString();
++}
++
+ } // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_app_icons.h b/Telegram/SourceFiles/tele/tele_app_icons.h
+index aed91194769814465d2f09fdf427808577f0bcc2..05fdd6b8146418ee3c155fa42f63f8ec50adb246 100644
+--- a/Telegram/SourceFiles/tele/tele_app_icons.h
++++ b/Telegram/SourceFiles/tele/tele_app_icons.h
+@@ -38,5 +38,6 @@ void ResetIcon(IconSlot slot);
+ void SetIconPreset(IconSlot slot, const QString &value);
+ [[nodiscard]] QString IconPresetName(const QString &value, IconSlot slot);
+ [[nodiscard]] QByteArray CustomIconContent(IconSlot slot);
++[[nodiscard]] QString LegacyInstallerShortcut();
+ 
+ } // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_single_paths.cpp b/Telegram/SourceFiles/tele/tele_single_paths.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..53343febd646594af59903a753b9b2b7785cb547
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_single_paths.cpp
+@@ -0,0 +1,38 @@
++#include "tele/tele_single_paths.h"
++
++#include <QtCore/QDir>
++#include <QtCore/QStringList>
++
++namespace Tele {
++
++QString SingleFileProfileCandidate(const QString &exeDir) {
++	auto path = QDir::fromNativeSeparators(exeDir);
++	while (path.endsWith(QChar('/'))) {
++		path.chop(1);
++	}
++	const auto parts = path.split(QChar('/'));
++	if (parts.size() < 4) {
++		return QString();
++	}
++	const auto &app = parts[parts.size() - 2];
++	const auto &single = parts[parts.size() - 3];
++	if (parts.back().isEmpty()
++		|| app.compare(QStringLiteral("app"), Qt::CaseInsensitive) != 0
++		|| single.compare(QStringLiteral("mad-single"), Qt::CaseInsensitive) != 0) {
++		return QString();
++	}
++	return parts.mid(0, parts.size() - 2).join(QChar('/'))
++		+ QStringLiteral("/profile/");
++}
++
++QString SingleFileWorkdir(const QString &exeDir) {
++	const auto candidate = SingleFileProfileCandidate(exeDir);
++	if (candidate.isEmpty()
++		|| !QDir(candidate).exists()
++		|| QDir(exeDir).exists(QStringLiteral("tdata"))) {
++		return QString();
++	}
++	return candidate;
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_single_paths.h b/Telegram/SourceFiles/tele/tele_single_paths.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..0c3b9b0a0c9633905034eef3c2a79b4ee7d21f65
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_single_paths.h
+@@ -0,0 +1,10 @@
++#pragma once
++
++#include <QtCore/QString>
++
++namespace Tele {
++
++[[nodiscard]] QString SingleFileProfileCandidate(const QString &exeDir);
++[[nodiscard]] QString SingleFileWorkdir(const QString &exeDir);
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..de97cea3a2627e1e0775648c765b34cafd7ebb9d
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+@@ -0,0 +1,32 @@
++#include "tele/tele_single_paths.h"
++
++#include <cstdio>
++#include <cstdlib>
++
++namespace {
++
++void Require(bool ok, const char *name) {
++	if (!ok) {
++		std::fprintf(stderr, "failed: %s
++", name);
++		std::exit(1);
++	}
++}
++
++void TestSinglePaths() {
++	using Tele::SingleFileProfileCandidate;
++	Require(SingleFileProfileCandidate(QStringLiteral("C:/Users/u/AppData/Local/mad-single/app/abc123/"))
++		== QStringLiteral("C:/Users/u/AppData/Local/mad-single/profile/"), "single build dir");
++	Require(SingleFileProfileCandidate(QStringLiteral("C:\Users\u\AppData\Local\MAD-SINGLE\App\abc123"))
++		== QStringLiteral("C:/Users/u/AppData/Local/MAD-SINGLE/profile/"), "native separators and case");
++	Require(SingleFileProfileCandidate(QStringLiteral("C:/Users/u/AppData/Local/Programs/mad/")).isEmpty(), "installed exe");
++	Require(SingleFileProfileCandidate(QStringLiteral("C:/mad-single/app/")).isEmpty(), "no build folder");
++	Require(SingleFileProfileCandidate(QStringLiteral("C:/x/mad-single/other/abc/")).isEmpty(), "other folder");
++}
++
++} // namespace
++
++int main() {
++	TestSinglePaths();
++	return 0;
++}
+diff --git a/Telegram/cmake/mad_tests.cmake b/Telegram/cmake/mad_tests.cmake
+index 7010bb509fc235fa3ad589d7adac14fa4086fcf5..9a54588bbf27a7403d0aaa80f334232edb33b50f 100644
+--- a/Telegram/cmake/mad_tests.cmake
++++ b/Telegram/cmake/mad_tests.cmake
+@@ -39,3 +39,16 @@ target_link_libraries(mad_links_tests PRIVATE
+     desktop-app::external_qt_static_plugins
+ )
+ set_target_properties(mad_links_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
++
++add_executable(mad_logic_tests)
++init_target(mad_logic_tests "(tests)")
++target_include_directories(mad_logic_tests PRIVATE ${src_loc})
++target_sources(mad_logic_tests PRIVATE
++    ${src_loc}/tele/tele_single_paths.cpp
++    ${src_loc}/tele/tests/mad_logic_tests.cpp
++)
++target_link_libraries(mad_logic_tests PRIVATE
++    desktop-app::external_qt
++    desktop-app::external_qt_static_plugins
++)
++set_target_properties(mad_logic_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
