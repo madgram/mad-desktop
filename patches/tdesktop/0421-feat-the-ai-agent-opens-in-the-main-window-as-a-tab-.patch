@@ -1,0 +1,3595 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "hello, i am forgotten" <me@thisisforgotten.com>
+Date: Fri, 20 Nov 2026 17:48:35 +0300
+Subject: [PATCH] feat: the ai agent opens in the main window as a tab or a
+ pinned chat
+
+---
+ Telegram/CMakeLists.txt                       |    6 +
+ Telegram/Resources/langs/mad_ru.json          |   36 +-
+ .../SourceFiles/dialogs/dialogs_widget.cpp    |   12 +
+ .../SourceFiles/settings/settings_tele.cpp    |  511 ++++++-
+ .../tele/agent/agent_auto_reply.cpp           |    4 +
+ .../SourceFiles/tele/agent/agent_chat.cpp     | 1190 +++++++++++++++++
+ Telegram/SourceFiles/tele/agent/agent_chat.h  |   85 ++
+ .../tele/agent/agent_navigation.cpp           |  418 ++++++
+ .../SourceFiles/tele/agent/agent_navigation.h |   30 +
+ .../SourceFiles/tele/agent/agent_panel.cpp    |  452 +------
+ Telegram/SourceFiles/tele/agent/agent_panel.h |    1 +
+ .../SourceFiles/tele/agent/agent_protocol.cpp |    2 +-
+ .../SourceFiles/tele/agent/agent_runner.cpp   |    7 +-
+ .../SourceFiles/tele/agent/agent_runner.h     |    1 +
+ .../SourceFiles/tele/agent/agent_section.cpp  |  338 +++++
+ .../SourceFiles/tele/agent/agent_section.h    |   13 +
+ .../SourceFiles/tele/agent/agent_tools.cpp    |    4 +
+ Telegram/SourceFiles/tele/agent/agent_tools.h |    1 +
+ .../SourceFiles/tele/tele_mad_link_parser.cpp |    1 +
+ Telegram/SourceFiles/tele/tele_options.cpp    |   42 +-
+ Telegram/SourceFiles/tele/tele_options.h      |    6 +
+ .../SourceFiles/tele/tele_settings_io.cpp     |    2 +
+ .../window/window_filters_menu.cpp            |    2 +
+ 23 files changed, 2673 insertions(+), 491 deletions(-)
+ create mode 100644 Telegram/SourceFiles/tele/agent/agent_chat.cpp
+ create mode 100644 Telegram/SourceFiles/tele/agent/agent_chat.h
+ create mode 100644 Telegram/SourceFiles/tele/agent/agent_navigation.cpp
+ create mode 100644 Telegram/SourceFiles/tele/agent/agent_navigation.h
+ create mode 100644 Telegram/SourceFiles/tele/agent/agent_section.cpp
+ create mode 100644 Telegram/SourceFiles/tele/agent/agent_section.h
+
+diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
+index 17bd2ac1e750bb1ae4e6a5d6de802a98c2393446..48da1dd3cf71e0cdfe0fa0dec4a4ca68b221e461 100644
+--- a/Telegram/CMakeLists.txt
++++ b/Telegram/CMakeLists.txt
+@@ -2689,6 +2689,12 @@ PRIVATE
+     tele/tele_card_widgets.h
+     tele/agent/agent_auto_reply.cpp
+     tele/agent/agent_auto_reply.h
++    tele/agent/agent_chat.cpp
++    tele/agent/agent_chat.h
++    tele/agent/agent_navigation.cpp
++    tele/agent/agent_navigation.h
++    tele/agent/agent_section.cpp
++    tele/agent/agent_section.h
+     tele/agent/agent_panel.cpp
+     tele/agent/agent_panel.h
+     tele/agent/agent_protocol.cpp
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index c8f7b4d304a971a5fdf3347a6ef200846701314e..061ef531442838d68ded2035cafd02bcaace48dc 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2421,5 +2421,39 @@
+   "Could not refresh the account.": "Не получилось обновить данные.",
+   "Could not start the domain check.": "Не получилось начать проверку домена.",
+   "Could not check the domain.": "Не получилось проверить домен.",
+-  "The record isn't visible yet. Wait a bit and check again.": "Запись пока не видна. Подожди немного и проверь ещё раз."
++  "The record isn't visible yet. Wait a bit and check again.": "Запись пока не видна. Подожди немного и проверь ещё раз.",
++  "Agent in navigation": "Агент в навигации",
++  "The tab sits next to the folders on the left; without them the agent is a pinned chat in All chats.": "Вкладка стоит рядом с папками слева; без них агент закреплён чатом во «Все чаты».",
++  "Notifications from the agent": "Уведомления от агента",
++  "Notes, urgent requests and stops from the auto-responder come as notifications.": "Заметки, срочные просьбы и остановки автоответчика приходят уведомлениями.",
++  "Opens the agent from the side menu.": "Открывает агента из бокового меню.",
++  "As a tab": "Вкладка",
++  "As a chat": "Чат",
++  "Placement": "Расположение",
++  "Provider and model": "Провайдер и модель",
++  "Who the agent is": "Кто ты",
++  "Actions and search": "Действия и поиск",
++  "Chats with auto-reply": "Чаты с автоответчиком",
++  "Auto-reply settings": "Параметры автоответчика",
++  "General": "Основные",
++  "Reset to the default text": "Вернуть стандартный текст",
++  "The key stays on this computer. Chats the agent reads are sent to the selected provider.": "Ключ хранится на этом компьютере. Переписки, которые читает агент, уходят выбранному провайдеру.",
++  "Not enabled for anyone yet.": "Пока ни для кого не включён.",
++  "Turn it on in the chat with the agent. It answers only in its chat while mad is open or running in the background.": "Включается в диалоге с агентом. Отвечает только в своём чате, пока mad открыт или работает в фоне.",
++  "Remove all auto-replies": "Удалить все автоответчики",
++  "Remove all auto-replies?": "Удалить все автоответчики?",
++  "Clear the conversation with the agent?": "Очистить историю диалога с агентом?",
++  "History cleared.": "История очищена.",
++  "How can I help?": "Чем помочь?",
++  "I can summarize chats, find things in them, help you reply, or just talk.": "Перескажу переписку, найду нужное в чатах, помогу ответить или просто поболтаю.",
++  "Add an API key first: Anthropic, OpenAI or any compatible service.": "Сначала добавь API-ключ: Anthropic, OpenAI или любой совместимый сервис.",
++  "What did I miss in unread chats?": "Что я пропустил в непрочитанных?",
++  "Summarize my latest chat": "Перескажи последний чат",
++  "Help me politely decline a meeting": "Помоги вежливо отказаться от встречи",
++  "Open settings": "Открыть настройки",
++  "Message the agent": "Сообщение агенту",
++  "Attach photo": "Прикрепить фото",
++  "Could not open the image.": "Не получилось открыть картинку.",
++  "Anthropic": "Anthropic",
++  "OpenAI": "OpenAI"
+ }
+diff --git a/Telegram/SourceFiles/dialogs/dialogs_widget.cpp b/Telegram/SourceFiles/dialogs/dialogs_widget.cpp
+index 3d65252b7deffc81179588479e36628dc7282e0e..e4fdec393f045718cfcb09e8d763f43d5ba7a8ab 100644
+--- a/Telegram/SourceFiles/dialogs/dialogs_widget.cpp
++++ b/Telegram/SourceFiles/dialogs/dialogs_widget.cpp
+@@ -92,6 +92,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "info/profile/info_profile_values.h"
+ #include "info/info_memento.h"
+ #include "inline_bots/bot_attach_web_view.h"
++#include "tele/agent/agent_navigation.h"
+ #include "tele/tele_calls.h"
+ #include "tele/tele_chats_selection.h"
+ #include "tele/tele_communities.h"
+@@ -497,6 +498,17 @@ Widget::Widget(
+ 		.inner = _inner,
+ 		.banners = (_layout == Layout::Main),
+ 	});
++	Tele::Agent::SetupDialogsTopRow({
++		.controller = controller,
++		.list = _innerList,
++		.inner = _inner,
++		.main = (_layout == Layout::Main),
++		.filter = _chatsFilterForTopBarSuggestion.value(),
++		.subsection = _openedFolderOrForum.value(),
++		.searching = _searchStateForTopBarSuggestion.events_starting_with(
++			!_searchState.query.isEmpty()),
++		.searchInPeer = _jumpToDate->toggledValue(),
++	});
+ 	controller->activeChatsFilter(
+ 	) | rpl::on_next([=](FilterId id) {
+ 		switchToChatsFilter(id);
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index a97d4a804646c3437e47af742dbb9cfa11e5400e..d2aa62561c87d97f899d2f9ba0de16be0b6f0178 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -4,6 +4,9 @@
+ #include "tele/tele_linked_accounts.h"
+ #include "tele/agent/agent_auto_reply.h"
+ #include "tele/agent/agent_panel.h"
++#include "tele/agent/agent_runner.h"
++#include "tele/agent/agent_store.h"
++#include "tele/tele_card_widgets.h"
+ #include "tele/tele_history_sync.h"
+ #include "tele/tele_settings_widgets.h"
+ 
+@@ -117,6 +120,7 @@ struct Category {
+ 	const style::icon *icon = nullptr;
+ 	QStringList keywords;
+ 	Type id;
++	Type parent;
+ 	void (*fill)(SectionBuilder&) = nullptr;
+ 	std::unique_ptr<BuildHelper> helper;
+ };
+@@ -4582,6 +4586,366 @@ void AddAgentTextButton(
+ 	AddAbout(builder, option.id(), description);
+ }
+ 
++void AddSubpageButtons(SectionBuilder &builder, const QString &path) {
++	if (Picked) {
++		return;
++	}
++	auto parent = Type();
++	for (const auto &category : Categories()) {
++		if (category.path == path) {
++			parent = category.id;
++		}
++	}
++	for (const auto &category : Categories()) {
++		if (!parent || category.parent != parent) {
++			continue;
++		}
++		const auto button = builder.addSectionButton({
++			.title = rpl::single(::Tele::Tr(category.title)),
++			.targetSection = category.id,
++			.icon = { category.icon },
++			.keywords = category.keywords,
++		});
++		if (button) {
++			SetupCopyLink(button, category.id, QString());
++		}
++	}
++}
++
++void AddAgentNavigation(SectionBuilder &builder) {
++	auto &option = base::options::lookup<QString>(
++		::Tele::kOptionAgentNavigation);
++	const auto id = option.id();
++	if (!Shown(id)) {
++		return;
++	}
++	const auto name = ::Tele::Tr(option.name());
++	const auto description = ::Tele::Tr(option.description());
++	builder.add([&](const WidgetContext &ctx) {
++		auto result = object_ptr<Ui::RpWidget>(ctx.container);
++		const auto row = result.data();
++		const auto &padding = st::settingsButtonNoIcon.padding;
++		row->resize(row->width(), ::Tele::CardScaled(56));
++		const auto control = Ui::CreateChild<::Tele::SegmentedControl>(
++			row,
++			std::vector<QString>{
++				::Tele::Tr(u"As a tab"_q),
++				::Tele::Tr(u"As a chat"_q),
++			},
++			(::Tele::AgentNavigation() == u"chat"_q) ? 1 : 0);
++		control->resizeToWidth(::Tele::CardScaled(190));
++		control->selectedChanges() | rpl::on_next([=](int index) {
++			::Tele::SetAgentNavigation(index ? u"chat"_q : QString());
++		}, control->lifetime());
++		::Tele::AgentNavigationValue(
++		) | rpl::on_next([=](const QString &value) {
++			control->setSelected((value == u"chat"_q) ? 1 : 0);
++		}, control->lifetime());
++		row->widthValue() | rpl::on_next([=](int width) {
++			control->moveToRight(
++				padding.right(),
++				(row->height() - control->height()) / 2,
++				width);
++		}, row->lifetime());
++		row->paintRequest() | rpl::on_next([=] {
++			auto p = QPainter(row);
++			const auto &st = st::settingsExperimentalTitle;
++			const auto &font = st.style.font;
++			const auto available = std::max(
++				row->width()
++					- padding.left()
++					- padding.right()
++					- control->width()
++					- ::Tele::CardScaled(12),
++				0);
++			p.setFont(font);
++			p.setPen(st.textFg);
++			p.drawText(
++				padding.left(),
++				(row->height() - font->height) / 2 + font->ascent,
++				font->elided(name, available));
++		}, row->lifetime());
++		SetupLink(row, id);
++		return SectionBuilder::WidgetToAdd{
++			.widget = std::move(result),
++			.align = style::al_justify,
++		};
++	}, [&] {
++		return SearchEntry{
++			.id = id,
++			.title = name,
++			.keywords = {
++				description,
++				u"tab"_q,
++				u"chat"_q,
++				u"вкладка"_q,
++				u"чат"_q,
++			},
++		};
++	});
++	AddAbout(builder, id, description);
++}
++
++void AddAgentProvider(SectionBuilder &builder) {
++	auto &option = base::options::lookup<QString>(
++		::Tele::kOptionAgentProvider);
++	const auto id = option.id();
++	if (!Shown(id)) {
++		return;
++	}
++	const auto name = ::Tele::Tr(option.name());
++	builder.add([&](const WidgetContext &ctx) {
++		auto result = object_ptr<Ui::VerticalLayout>(ctx.container);
++		const auto raw = result.data();
++		const auto &padding = st::settingsButtonNoIcon.padding;
++		raw->add(
++			object_ptr<Ui::FlatLabel>(
++				raw,
++				name,
++				st::settingsExperimentalTitle),
++			QMargins(
++				padding.left(),
++				padding.top(),
++				padding.right(),
++				::Tele::CardScaled(10)));
++		const auto values = std::vector<QString>{
++			QString(),
++			u"openai"_q,
++			u"anthropic-compatible"_q,
++			u"openai-compatible"_q,
++		};
++		const auto labels = std::vector<QString>{
++			::Tele::Tr(u"Anthropic"_q),
++			::Tele::Tr(u"OpenAI"_q),
++			::Tele::Tr(u"Anthropic-compatible"_q),
++			::Tele::Tr(u"OpenAI-compatible"_q),
++		};
++		const auto indexOf = [=](const QString &value) {
++			const auto i = ranges::find(values, value);
++			return (i != end(values)) ? int(i - begin(values)) : 0;
++		};
++		const auto chips = raw->add(
++			object_ptr<::Tele::ChipsSelector>(
++				raw,
++				labels,
++				indexOf(::Tele::AgentProvider())),
++			QMargins(
++				padding.left(),
++				0,
++				padding.right(),
++				padding.bottom()));
++		chips->selectedChanges() | rpl::on_next([=](int index) {
++			::Tele::SetAgentProvider(values[index]);
++		}, chips->lifetime());
++		::Tele::AgentProviderValue(
++		) | rpl::on_next([=](const QString &value) {
++			chips->setSelected(indexOf(value));
++		}, chips->lifetime());
++		SetupLink(raw, id);
++		return SectionBuilder::WidgetToAdd{
++			.widget = std::move(result),
++			.align = style::al_justify,
++		};
++	}, [&] {
++		return SearchEntry{
++			.id = id,
++			.title = name,
++			.keywords = {
++				u"claude"_q,
++				u"chatgpt"_q,
++				u"openai"_q,
++				u"anthropic"_q,
++				u"provider"_q,
++				u"провайдер"_q,
++			},
++		};
++	});
++}
++
++void AddAgentPersona(SectionBuilder &builder) {
++	auto &option = base::options::lookup<QString>(
++		::Tele::kOptionAgentPersona);
++	const auto id = option.id();
++	if (!Shown(id)) {
++		return;
++	}
++	const auto name = ::Tele::Tr(option.name());
++	const auto description = ::Tele::Tr(option.description());
++	builder.add([&](const WidgetContext &ctx) {
++		const auto controller = ctx.controller;
++		auto result = object_ptr<Ui::VerticalLayout>(ctx.container);
++		const auto raw = result.data();
++		const auto &padding = st::settingsButtonNoIcon.padding;
++		const auto card = raw->add(
++			object_ptr<Ui::RpWidget>(raw),
++			QMargins(
++				padding.left(),
++				::Tele::CardScaled(4),
++				padding.right(),
++				0));
++		const auto text = Ui::CreateChild<Ui::FlatLabel>(
++			card,
++			QString(),
++			st::boxLabel);
++		const auto inner = ::Tele::CardScaled(14);
++		const auto refresh = [=] {
++			const auto value = base::options::lookup<QString>(
++				::Tele::kOptionAgentPersona).value().trimmed();
++			text->setText(value.isEmpty()
++				? ::Tele::Agent::DefaultPersona()
++				: value);
++		};
++		base::options::lookup<QString>(
++			::Tele::kOptionAgentPersona
++		).changes() | rpl::on_next(refresh, text->lifetime());
++		refresh();
++		rpl::combine(
++			card->widthValue(),
++			text->heightValue()
++		) | rpl::on_next([=](int width, int) {
++			text->resizeToWidth(std::max(width - 2 * inner, 1));
++			text->moveToLeft(inner, inner, width);
++			const auto height = text->height() + 2 * inner;
++			if (card->height() != height) {
++				card->resize(width, height);
++			}
++		}, card->lifetime());
++		card->paintRequest() | rpl::on_next([=] {
++			auto p = QPainter(card);
++			auto hq = PainterHighQualityEnabler(p);
++			const auto radius = ::Tele::CardScaled(12) * 1.;
++			p.setPen(Qt::NoPen);
++			p.setBrush(st::windowBgOver);
++			p.drawRoundedRect(QRectF(card->rect()), radius, radius);
++		}, card->lifetime());
++		const auto links = raw->add(
++			object_ptr<Ui::RpWidget>(raw),
++			QMargins(
++				padding.left(),
++				::Tele::CardScaled(8),
++				padding.right(),
++				::Tele::CardScaled(4)));
++		const auto edit = Ui::CreateChild<Ui::LinkButton>(
++			links,
++			::Tele::Tr(u"Edit"_q));
++		const auto reset = Ui::CreateChild<Ui::LinkButton>(
++			links,
++			::Tele::Tr(u"Reset to the default text"_q));
++		links->resize(links->width(), edit->height());
++		links->widthValue() | rpl::on_next([=](int width) {
++			edit->moveToLeft(0, 0, width);
++			reset->moveToLeft(
++				edit->width() + ::Tele::CardScaled(20),
++				0,
++				width);
++		}, links->lifetime());
++		edit->setClickedCallback([=] {
++			::Tele::Agent::ShowTextBox(
++				controller,
++				::Tele::kOptionAgentPersona,
++				name,
++				true);
++		});
++		reset->setClickedCallback([=] {
++			base::options::lookup<QString>(
++				::Tele::kOptionAgentPersona).set(QString());
++		});
++		SetupLink(card, id);
++		return SectionBuilder::WidgetToAdd{
++			.widget = std::move(result),
++			.align = style::al_justify,
++		};
++	}, [&] {
++		return SearchEntry{
++			.id = id,
++			.title = name,
++			.keywords = { description, u"persona"_q, u"prompt"_q },
++		};
++	});
++	AddAbout(builder, id, description);
++}
++
++void AddAgentAutoReplyList(SectionBuilder &builder) {
++	const auto id = u"tele-agent-auto-replies"_q;
++	if (!Shown(id)) {
++		return;
++	}
++	const auto title = ::Tele::Tr(u"Auto-replies"_q);
++	builder.add([&](const WidgetContext &ctx) {
++		const auto session = &ctx.controller->session();
++		auto result = object_ptr<Ui::VerticalLayout>(ctx.container);
++		const auto raw = result.data();
++		const auto rebuild = [=] {
++			raw->clear();
++			const auto list = ::Tele::Agent::AutoReplies(session);
++			if (list.empty()) {
++				const auto &padding = st::settingsButtonNoIcon.padding;
++				raw->add(
++					object_ptr<Ui::FlatLabel>(
++						raw,
++						::Tele::Tr(u"Not enabled for anyone yet."_q),
++						st::settingsExperimentalAbout),
++					QMargins(
++						padding.left(),
++						::Tele::CardScaled(6),
++						padding.right(),
++						::Tele::CardScaled(10)));
++			}
++			for (const auto &entry : list) {
++				auto row = CreateOptionRow(
++					raw,
++					(entry.title.isEmpty()
++						? QString::number(entry.peer)
++						: entry.title),
++					entry.scenario);
++				const auto button = row.button;
++				button->toggleOn(rpl::single(entry.enabled));
++				const auto peer = entry.peer;
++				button->toggledChanges(
++				) | rpl::on_next([=](bool enabled) {
++					auto current = ::Tele::Agent::AutoReplies(session);
++					for (auto &item : current) {
++						if (item.peer == peer) {
++							item.enabled = enabled;
++						}
++					}
++					::Tele::Agent::SetAutoReplies(session, std::move(current));
++				}, button->lifetime());
++				raw->add(std::move(row.widget));
++			}
++			raw->resizeToWidth(raw->width());
++		};
++		const auto scheduled = raw->lifetime().make_state<bool>(false);
++		::Tele::Agent::AutoRepliesChanges(
++			session
++		) | rpl::on_next([=] {
++			if (*scheduled) {
++				return;
++			}
++			*scheduled = true;
++			crl::on_main(raw, [=] {
++				*scheduled = false;
++				rebuild();
++			});
++		}, raw->lifetime());
++		rebuild();
++		return SectionBuilder::WidgetToAdd{
++			.widget = std::move(result),
++			.align = style::al_justify,
++		};
++	}, [&] {
++		return SearchEntry{
++			.id = id,
++			.title = title,
++			.keywords = {
++				u"auto"_q,
++				u"responder"_q,
++				u"автоответчик"_q,
++			},
++		};
++	});
++}
++
+ void FillAgent(SectionBuilder &builder) {
+ 	const auto controller = builder.controller();
+ 	AddGroupTitle(builder, u"AI agent"_q);
+@@ -4594,22 +4958,18 @@ void FillAgent(SectionBuilder &builder) {
+ 		},
+ 		.keywords = { u"ai"_q, u"assistant"_q, u"ии"_q, u"агент"_q },
+ 	});
++	AddSubpageButtons(builder, u"agent"_q);
++	AddGroupDivider(builder);
++}
++
++void FillAgentGeneral(SectionBuilder &builder) {
++	const auto controller = builder.controller();
++	AddGroupTitle(builder, u"Placement"_q);
++	AddAgentNavigation(builder);
+ 	AddOptionToggle(builder, ::Tele::kOptionAgentMenu, { u"ai"_q });
+ 	AddGroupDivider(builder);
+-	AddGroupTitle(builder, u"Model"_q);
+-	AddButtonChoice(
+-		builder,
+-		::Tele::kOptionAgentProvider,
+-		::Tele::AgentProvider,
+-		::Tele::SetAgentProvider,
+-		::Tele::AgentProviderValue,
+-		{
+-			{ QString(), u"Anthropic"_q },
+-			{ u"openai"_q, u"OpenAI"_q },
+-			{ u"anthropic-compatible"_q, u"Anthropic-compatible"_q },
+-			{ u"openai-compatible"_q, u"OpenAI-compatible"_q },
+-		},
+-		{ u"claude"_q, u"chatgpt"_q, u"provider"_q });
++	AddGroupTitle(builder, u"Provider and model"_q);
++	AddAgentProvider(builder);
+ 	AddButton(builder, {
+ 		.id = u"tele-agent-key"_q,
+ 		.title = rpl::single(::Tele::Tr(u"API key"_q)),
+@@ -4640,13 +5000,39 @@ void FillAgent(SectionBuilder &builder) {
+ 			::Tele::Agent::CheckKey(controller);
+ 		},
+ 	});
+-	AddAgentTextButton(
++	AddAbout(
+ 		builder,
+-		::Tele::kOptionAgentPersona,
+-		u"Default"_q,
+-		true);
++		u"tele-agent-check"_q,
++		::Tele::Tr(u"The key stays on this computer. Chats the agent reads "
++			"are sent to the selected provider."_q));
++	AddGroupDivider(builder);
++	AddGroupTitle(builder, u"Who the agent is"_q);
++	AddAgentPersona(builder);
+ 	AddGroupDivider(builder);
+-	AddGroupTitle(builder, u"What the agent can do"_q);
++	AddButton(builder, {
++		.id = u"tele-agent-clear"_q,
++		.title = rpl::single(::Tele::Tr(u"Clear the conversation"_q)),
++		.st = &st::settingsAttentionButton,
++		.onClick = [=] {
++			controller->show(Ui::MakeConfirmBox({
++				.text = ::Tele::Tr(
++					u"Clear the conversation with the agent?"_q),
++				.confirmed = [=](Fn<void()> close) {
++					::Tele::Agent::Runner::For(
++						&controller->session()).clear();
++					controller->showToast(::Tele::Tr(u"History cleared."_q));
++					close();
++				},
++				.confirmText = ::Tele::Tr(u"Clear"_q),
++				.confirmStyle = &st::attentionBoxButton,
++			}));
++		},
++		.keywords = { u"history"_q, u"история"_q },
++	});
++}
++
++void FillAgentPermissions(SectionBuilder &builder) {
++	AddGroupTitle(builder, u"Messages"_q);
+ 	AddOptionToggle(builder, ::Tele::kOptionAgentReadChats, { u"ai"_q });
+ 	AddOptionToggle(builder, ::Tele::kOptionAgentSend, { u"ai"_q });
+ 	AddOptionToggle(
+@@ -4654,44 +5040,64 @@ void FillAgent(SectionBuilder &builder) {
+ 		::Tele::kOptionAgentSendUnconfirmed,
+ 		{ u"ai"_q, u"confirm"_q },
+ 		::Tele::kOptionAgentSend);
++	AddGroupDivider(builder);
++	AddGroupTitle(builder, u"Actions and search"_q);
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionAgentChatActions,
++		{ u"ai"_q, u"mute"_q, u"archive"_q, u"pin"_q });
++	AddOptionToggle(builder, ::Tele::kOptionAgentForward, { u"ai"_q });
+ 	AddOptionToggle(builder, ::Tele::kOptionAgentWebSearch, { u"ai"_q });
+ 	AddOptionToggle(
+ 		builder,
+ 		::Tele::kOptionAgentLocalWeb,
+ 		{ u"ai"_q, u"duckduckgo"_q, u"openai"_q },
+ 		::Tele::kOptionAgentWebSearch);
+-	AddOptionToggle(
+-		builder,
+-		::Tele::kOptionAgentChatActions,
+-		{ u"ai"_q, u"mute"_q, u"archive"_q, u"pin"_q });
+-	AddOptionToggle(builder, ::Tele::kOptionAgentForward, { u"ai"_q });
+ 	AddGroupDivider(builder);
+-	AddGroupTitle(builder, u"Auto-reply"_q);
+-	AddButton(builder, {
+-		.id = u"tele-agent-auto-replies"_q,
+-		.title = rpl::single(::Tele::Tr(u"Auto-replies"_q)),
+-		.st = &st::settingsButtonNoIcon,
+-		.onClick = [=] {
+-			::Tele::Agent::ShowAutoRepliesBox(controller);
+-		},
+-		.keywords = {
+-			u"ai"_q,
+-			u"auto"_q,
+-			u"responder"_q,
+-			u"автоответчик"_q,
+-		},
+-	});
++}
++
++void FillAgentAutoReplies(SectionBuilder &builder) {
++	const auto controller = builder.controller();
++	AddGroupTitle(builder, u"Chats with auto-reply"_q);
++	AddAgentAutoReplyList(builder);
++	AddAbout(
++		builder,
++		u"tele-agent-auto-replies"_q,
++		::Tele::Tr(u"Turn it on in the chat with the agent. It answers "
++			"only in its chat while mad is open or running in the "
++			"background."_q));
++	AddGroupDivider(builder);
++	AddGroupTitle(builder, u"Auto-reply settings"_q);
+ 	AddOptionToggle(
+ 		builder,
+ 		::Tele::kOptionAgentAutoReplyWeb,
+-		{ u"ai"_q, u"auto"_q, u"duckduckgo"_q },
+-		::Tele::kOptionAgentSend);
++		{ u"ai"_q, u"auto"_q, u"duckduckgo"_q });
+ 	AddOptionToggle(
+ 		builder,
+ 		::Tele::kOptionAgentAutoReplyStatus,
+-		{ u"ai"_q, u"auto"_q, u"thinking"_q },
+-		::Tele::kOptionAgentSend);
++		{ u"ai"_q, u"auto"_q, u"thinking"_q });
++	AddOptionToggle(
++		builder,
++		::Tele::kOptionAgentNotifications,
++		{ u"ai"_q, u"auto"_q, u"уведомления"_q });
+ 	AddGroupDivider(builder);
++	AddButton(builder, {
++		.id = u"tele-agent-auto-replies-clear"_q,
++		.title = rpl::single(::Tele::Tr(u"Remove all auto-replies"_q)),
++		.st = &st::settingsAttentionButton,
++		.onClick = [=] {
++			controller->show(Ui::MakeConfirmBox({
++				.text = ::Tele::Tr(u"Remove all auto-replies?"_q),
++				.confirmed = [=](Fn<void()> close) {
++					::Tele::Agent::SetAutoReplies(&controller->session(), {});
++					close();
++				},
++				.confirmText = ::Tele::Tr(u"Remove"_q),
++				.confirmStyle = &st::attentionBoxButton,
++			}));
++		},
++		.keywords = { u"auto"_q, u"автоответчик"_q },
++	});
+ }
+ 
+ void FillMadServer(SectionBuilder &builder) {
+@@ -4741,6 +5147,9 @@ void FillRoot(SectionBuilder &builder) {
+ 	builder.addDividerText(rpl::single(BuildText()));
+ 	AddGroupTitle(builder, u"Categories"_q);
+ 	for (const auto &category : Categories()) {
++		if (category.parent) {
++			continue;
++		}
+ 		const auto button = builder.addSectionButton({
+ 			.title = rpl::single(::Tele::Tr(category.title)),
+ 			.targetSection = category.id,
+@@ -4763,12 +5172,13 @@ void FillRoot(SectionBuilder &builder) {
+ 			QString title,
+ 			const style::icon &icon,
+ 			QStringList keywords,
+-			void (*fill)(SectionBuilder&)) {
++			void (*fill)(SectionBuilder&),
++			Type parent = nullptr) {
+ 		const auto id = Type(std::make_shared<CategoryFactory>(
+ 			int(result.size())));
+ 		auto meta = SectionMeta{
+ 			.id = id,
+-			.parentId = TeleSection::Id(),
++			.parentId = parent ? parent : TeleSection::Id(),
+ 			.icon = &icon,
+ 			.titleText = [=] { return ::Tele::Tr(title); },
+ 		};
+@@ -4778,6 +5188,7 @@ void FillRoot(SectionBuilder &builder) {
+ 			.icon = &icon,
+ 			.keywords = std::move(keywords),
+ 			.id = id,
++			.parent = parent,
+ 			.fill = fill,
+ 			.helper = std::make_unique<BuildHelper>(std::move(meta), fill),
+ 		});
+@@ -4788,6 +5199,16 @@ void FillRoot(SectionBuilder &builder) {
+ 		{ u"steam"_q, u"spotify"_q, u"аккаунты"_q }, FillMadAccounts);
+ 	add(u"agent"_q, u"AI agent"_q, st::menuIconBotCommands,
+ 		{ u"ai"_q, u"claude"_q, u"ии"_q, u"агент"_q }, FillAgent);
++	const auto agent = result.back().id;
++	add(u"agent/general"_q, u"General"_q, st::menuIconSettings,
++		{ u"provider"_q, u"model"_q, u"key"_q, u"провайдер"_q, u"модель"_q },
++		FillAgentGeneral, agent);
++	add(u"agent/permissions"_q, u"Permissions"_q, st::menuIconPermissions,
++		{ u"read"_q, u"send"_q, u"web"_q, u"разрешения"_q },
++		FillAgentPermissions, agent);
++	add(u"agent/auto-replies"_q, u"Auto-replies"_q, st::menuIconReply,
++		{ u"auto"_q, u"responder"_q, u"автоответчик"_q },
++		FillAgentAutoReplies, agent);
+ 	add(u"server"_q, u"Server"_q, st::menuIconLink,
+ 		{ u"aliases"_q, u"синхронизация"_q, u"алиасы"_q }, FillMadServer);
+ 	add(u"backup"_q, u"Backup and updates"_q, st::menuIconManage,
+diff --git a/Telegram/SourceFiles/tele/agent/agent_auto_reply.cpp b/Telegram/SourceFiles/tele/agent/agent_auto_reply.cpp
+index 7ebb9a6b3486a9c3b38181e0a2ffce617bd31a33..e2a54f01c56cafeb504b199b74b65b8aa0cc5d01 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_auto_reply.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_auto_reply.cpp
+@@ -25,6 +25,7 @@
+ #include "tele/tele_launch_flags.h"
+ #include "tele/tele_lowercase.h"
+ #include "tele/tele_online_notify.h"
++#include "tele/tele_options.h"
+ #include "ui/layers/generic_box.h"
+ #include "ui/widgets/buttons.h"
+ #include "ui/widgets/labels.h"
+@@ -1308,6 +1309,9 @@ void AutoResponder::notify(
+ 		const JobPtr &job,
+ 		const QString &title,
+ 		const QString &text) {
++	if (!AgentNotifications()) {
++		return;
++	}
+ 	const auto index = (++_notifications % kNotificationRange);
+ 	ShowTeleNotification({
+ 		.user = job->user,
+diff --git a/Telegram/SourceFiles/tele/agent/agent_chat.cpp b/Telegram/SourceFiles/tele/agent/agent_chat.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..d5a94ad0f6e12971d6d749bd11d5ebeb7712b105
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/agent/agent_chat.cpp
+@@ -0,0 +1,1190 @@
++#include "tele/agent/agent_chat.h"
++
++#include "core/file_utilities.h"
++#include "main/main_session.h"
++#include "tele/agent/agent_auto_reply.h"
++#include "tele/agent/agent_markdown.h"
++#include "tele/agent/agent_panel.h"
++#include "tele/agent/agent_runner.h"
++#include "tele/agent/agent_store.h"
++#include "tele/agent/agent_tools.h"
++#include "tele/tele_card_widgets.h"
++#include "tele/tele_lowercase.h"
++#include "ui/boxes/confirm_box.h"
++#include "ui/controls/send_button.h"
++#include "ui/image/image_prepare.h"
++#include "ui/layers/generic_box.h"
++#include "ui/painter.h"
++#include "ui/style/style_core_scale.h"
++#include "ui/text/text_entity.h"
++#include "ui/widgets/buttons.h"
++#include "ui/widgets/fields/input_field.h"
++#include "ui/widgets/labels.h"
++#include "ui/widgets/scroll_area.h"
++#include "ui/wrap/padding_wrap.h"
++#include "ui/wrap/vertical_layout.h"
++#include "window/window_session_controller.h"
++#include "styles/style_basic.h"
++#include "styles/style_chat_helpers.h"
++#include "styles/style_layers.h"
++#include "styles/style_menu_icons.h"
++#include "styles/style_widgets.h"
++
++#include <QtGui/QPainterPath>
++
++namespace Tele::Agent {
++namespace {
++
++constexpr auto kSide = 20;
++constexpr auto kMaxBubble = 0.74;
++constexpr auto kThumbMax = 220;
++constexpr auto kMaxCached = 512;
++constexpr auto kBarHeight = 56;
++
++enum class ChipState {
++	Running,
++	Done,
++	Failed,
++};
++
++struct ChipData {
++	QString name;
++	QString title;
++	QString reason;
++	ChipState state = ChipState::Running;
++};
++
++[[nodiscard]] TextWithEntities Markdown(const QString &text) {
++	static auto cache = base::flat_map<QString, TextWithEntities>();
++	if (const auto i = cache.find(text); i != end(cache)) {
++		return i->second;
++	}
++	auto result = MarkdownToEntities(text);
++	const auto links = TextUtilities::ParseEntities(
++		result.text,
++		TextParseLinks).entities;
++	for (const auto &link : links) {
++		const auto from = link.offset();
++		const auto till = from + link.length();
++		const auto blocked = ranges::any_of(result.entities, [&](
++				const EntityInText &entity) {
++			const auto type = entity.type();
++			return (entity.offset() < till)
++				&& (entity.offset() + entity.length() > from)
++				&& (type == EntityType::CustomUrl
++					|| type == EntityType::Code
++					|| type == EntityType::Pre);
++		});
++		if (!blocked) {
++			result.entities.push_back(link);
++		}
++	}
++	ranges::stable_sort(
++		result.entities,
++		ranges::less(),
++		&EntityInText::offset);
++	if (int(cache.size()) >= kMaxCached) {
++		cache.clear();
++	}
++	cache.emplace(text, result);
++	return result;
++}
++
++[[nodiscard]] style::FlatLabel MakeLabelStyle(
++		const style::color &color,
++		int size) {
++	auto result = st::defaultFlatLabel;
++	result.textFg = color;
++	result.minWidth = 0;
++	result.maxHeight = 0;
++	result.style.font = CardFont(size, false);
++	result.style.lineHeight = CardScaled(size + 7);
++	return result;
++}
++
++[[nodiscard]] const style::FlatLabel &AssistantStyle() {
++	static const auto result = MakeLabelStyle(st::windowFg, 14);
++	return result;
++}
++
++[[nodiscard]] const style::FlatLabel &UserStyle() {
++	static const auto result = MakeLabelStyle(st::windowBoldFg, 14);
++	return result;
++}
++
++[[nodiscard]] const style::FlatLabel &ErrorStyle() {
++	static const auto result = MakeLabelStyle(st::boxTextFgError, 13);
++	return result;
++}
++
++[[nodiscard]] const style::FlatLabel &CenteredStyle() {
++	static const auto result = [] {
++		auto copy = MakeLabelStyle(st::windowSubTextFg, 15);
++		copy.align = style::al_top;
++		return copy;
++	}();
++	return result;
++}
++
++[[nodiscard]] const style::FlatLabel &BarStyle() {
++	static const auto result = [] {
++		auto copy = MakeLabelStyle(st::windowBoldFg, 14);
++		copy.style.font = CardFont(14, true);
++		copy.maxHeight = CardScaled(20);
++		return copy;
++	}();
++	return result;
++}
++
++[[nodiscard]] const style::InputField &FieldStyle() {
++	static const auto result = [] {
++		auto copy = st::historyComposeField;
++		copy.textBg = st::windowBgOver;
++		copy.heightMax = CardScaled(160);
++		return copy;
++	}();
++	return result;
++}
++
++[[nodiscard]] QString RunningLabel(const QString &name) {
++	if (name == u"web_search"_q) {
++		return Tr(u"Searching the web…"_q);
++	} else if (name == u"web_fetch"_q) {
++		return Tr(u"Reading a page…"_q);
++	} else if (name == u"read_chat"_q) {
++		return Tr(u"Reading the chat…"_q);
++	} else if (name == u"list_chats"_q || name == u"search_chats"_q) {
++		return Tr(u"Looking through the chats…"_q);
++	} else if (name == u"search_messages"_q) {
++		return Tr(u"Searching messages…"_q);
++	} else if (name == u"view_photo"_q) {
++		return Tr(u"Looking at the photo…"_q);
++	} else if (name == u"transcribe_voice"_q) {
++		return Tr(u"Transcribing the voice message…"_q);
++	} else if (name == u"draft_reply"_q) {
++		return Tr(u"Writing a draft…"_q);
++	} else if (name == u"forward_messages"_q) {
++		return Tr(u"Forwarding…"_q);
++	}
++	return Tr(u"Working…"_q);
++}
++
++void CopyMarkdown(const QString &markdown) {
++	TextUtilities::SetClipboardText(TextForMimeData::Rich(Markdown(markdown)));
++}
++
++[[nodiscard]] QPen GlyphPen(const QRectF &rect, const QColor &color) {
++	auto pen = QPen(color);
++	pen.setWidthF(std::max(rect.width() * 0.12, 1.));
++	pen.setCapStyle(Qt::RoundCap);
++	pen.setJoinStyle(Qt::RoundJoin);
++	return pen;
++}
++
++void PaintListGlyph(QPainter &p, const QRectF &rect, const QColor &color) {
++	p.setPen(GlyphPen(rect, color));
++	p.setBrush(Qt::NoBrush);
++	for (auto i = 0; i != 3; ++i) {
++		const auto y = rect.top() + rect.height() * (0.25 + 0.25 * i);
++		p.drawLine(
++			QPointF(rect.left() + rect.width() * 0.1, y),
++			QPointF(rect.right() - rect.width() * 0.1, y));
++	}
++}
++
++void PaintSearchGlyph(QPainter &p, const QRectF &rect, const QColor &color) {
++	p.setPen(GlyphPen(rect, color));
++	p.setBrush(Qt::NoBrush);
++	const auto size = rect.width() * 0.62;
++	p.drawEllipse(QRectF(
++		rect.left() + rect.width() * 0.08,
++		rect.top() + rect.height() * 0.08,
++		size,
++		size));
++	p.drawLine(
++		QPointF(
++			rect.left() + rect.width() * 0.62,
++			rect.top() + rect.height() * 0.62),
++		QPointF(
++			rect.right() - rect.width() * 0.06,
++			rect.bottom() - rect.height() * 0.06));
++}
++
++void PaintCrossGlyph(QPainter &p, const QRectF &rect, const QColor &color) {
++	p.setPen(GlyphPen(rect, color));
++	p.setBrush(Qt::NoBrush);
++	const auto inset = rect.width() * 0.2;
++	p.drawLine(
++		QPointF(rect.left() + inset, rect.top() + inset),
++		QPointF(rect.right() - inset, rect.bottom() - inset));
++	p.drawLine(
++		QPointF(rect.right() - inset, rect.top() + inset),
++		QPointF(rect.left() + inset, rect.bottom() - inset));
++}
++
++void PaintDotsGlyph(QPainter &p, const QRectF &rect, const QColor &color) {
++	p.setPen(Qt::NoPen);
++	p.setBrush(color);
++	const auto size = rect.width() * 0.2;
++	for (auto i = 0; i != 3; ++i) {
++		p.drawEllipse(QRectF(
++			rect.left() + rect.width() * (0.1 + 0.3 * i),
++			rect.center().y() - size / 2.,
++			size,
++			size));
++	}
++}
++
++class ToolChip final : public Ui::RpWidget {
++public:
++	ToolChip(QWidget *parent, ChipData data);
++
++protected:
++	int resizeGetHeight(int newWidth) override;
++	void paintEvent(QPaintEvent *e) override;
++
++private:
++	const ChipData _data;
++
++};
++
++ToolChip::ToolChip(QWidget *parent, ChipData data)
++: RpWidget(parent)
++, _data(std::move(data)) {
++}
++
++int ToolChip::resizeGetHeight(int newWidth) {
++	return CardScaled(40);
++}
++
++void ToolChip::paintEvent(QPaintEvent *e) {
++	auto p = QPainter(this);
++	auto hq = PainterHighQualityEnabler(p);
++	const auto side = CardScaled(kSide);
++	const auto chipHeight = CardScaled(32);
++	const auto top = (height() - chipHeight) / 2;
++	const auto font = CardFont(13, false);
++	const auto icon = CardScaled(14);
++	const auto padding = CardScaled(12);
++	const auto mark = CardScaled(12);
++	const auto skip = CardScaled(8);
++	const auto failed = (_data.state == ChipState::Failed);
++	auto text = _data.title;
++	if (failed && !_data.reason.isEmpty()) {
++		text += u": "_q + _data.reason;
++	}
++	const auto available = std::max(
++		width() - 2 * side - 2 * padding - icon - 2 * skip - mark,
++		0);
++	const auto elided = font->elided(text, available);
++	const auto chipWidth = 2 * padding
++		+ icon
++		+ skip
++		+ font->width(elided)
++		+ skip
++		+ mark;
++	const auto rect = QRect(side, top, chipWidth, chipHeight);
++	const auto radius = CardScaled(8) * 1.;
++	p.setPen(Qt::NoPen);
++	p.setBrush(st::windowBgOver);
++	p.drawRoundedRect(QRectF(rect), radius, radius);
++	const auto color = failed
++		? st::boxTextFgError->c
++		: st::windowSubTextFg->c;
++	const auto glyph = QRectF(
++		rect.x() + padding,
++		rect.y() + (chipHeight - icon) / 2.,
++		icon,
++		icon);
++	if (_data.name.contains(u"search"_q)) {
++		PaintSearchGlyph(p, glyph, color);
++	} else {
++		PaintListGlyph(p, glyph, color);
++	}
++	p.setFont(font);
++	p.setPen(failed ? st::boxTextFgError : st::windowFg);
++	p.drawText(
++		rect.x() + padding + icon + skip,
++		rect.y() + (chipHeight - font->height) / 2 + font->ascent,
++		elided);
++	const auto markRect = QRectF(
++		rect.x() + rect.width() - padding - mark,
++		rect.y() + (chipHeight - mark) / 2.,
++		mark,
++		mark);
++	if (_data.state == ChipState::Done) {
++		PaintCardCheck(p, markRect, st::windowSubTextFg->c);
++	} else if (failed) {
++		PaintCrossGlyph(p, markRect, st::boxTextFgError->c);
++	} else {
++		PaintDotsGlyph(p, markRect, st::windowSubTextFg->c);
++	}
++}
++
++class UserBubble final : public Ui::RpWidget {
++public:
++	UserBubble(QWidget *parent, const Message &message);
++
++protected:
++	int resizeGetHeight(int newWidth) override;
++	void paintEvent(QPaintEvent *e) override;
++
++private:
++	object_ptr<Ui::FlatLabel> _label = { nullptr };
++	QImage _image;
++	QImage _scaled;
++	QRect _bubble;
++	QRect _imageRect;
++
++};
++
++UserBubble::UserBubble(QWidget *parent, const Message &message)
++: RpWidget(parent) {
++	if (!message.text.isEmpty()) {
++		_label.create(this, message.text, UserStyle());
++		_label->setSelectable(true);
++	}
++	for (const auto &image : message.images) {
++		auto decoded = QImage::fromData(
++			QByteArray::fromBase64(image.base64.toLatin1()));
++		if (!decoded.isNull()) {
++			_image = std::move(decoded);
++			break;
++		}
++	}
++}
++
++int UserBubble::resizeGetHeight(int newWidth) {
++	const auto side = CardScaled(kSide);
++	const auto padding = QMargins(
++		CardScaled(14),
++		CardScaled(9),
++		CardScaled(14),
++		CardScaled(10));
++	const auto vertical = CardScaled(4);
++	const auto maxBubble = std::max(
++		int(newWidth * kMaxBubble),
++		CardScaled(160));
++	const auto innerMax = std::max(
++		maxBubble - padding.left() - padding.right(),
++		1);
++	auto imageSize = QSize();
++	if (!_image.isNull()) {
++		const auto limit = QSize(
++			std::min(innerMax, CardScaled(kThumbMax)),
++			CardScaled(kThumbMax));
++		const auto original = _image.size()
++			/ std::max(_image.devicePixelRatio(), 1.);
++		imageSize = (original.width() > limit.width()
++			|| original.height() > limit.height())
++			? original.scaled(limit, Qt::KeepAspectRatio)
++			: original;
++	}
++	auto labelWidth = 0;
++	auto labelHeight = 0;
++	if (_label) {
++		labelWidth = std::min(std::max(_label->textMaxWidth(), 1), innerMax);
++		_label->resizeToWidth(labelWidth);
++		labelHeight = _label->height();
++	}
++	const auto skip = (!imageSize.isEmpty() && _label)
++		? CardScaled(6)
++		: 0;
++	const auto innerWidth = std::max(imageSize.width(), labelWidth);
++	const auto innerHeight = imageSize.height() + skip + labelHeight;
++	const auto bubbleWidth = innerWidth + padding.left() + padding.right();
++	const auto bubbleHeight = innerHeight + padding.top() + padding.bottom();
++	_bubble = QRect(
++		newWidth - side - bubbleWidth,
++		vertical,
++		bubbleWidth,
++		bubbleHeight);
++	_imageRect = imageSize.isEmpty()
++		? QRect()
++		: QRect(
++			_bubble.x() + padding.left(),
++			_bubble.y() + padding.top(),
++			imageSize.width(),
++			imageSize.height());
++	if (_label) {
++		_label->moveToLeft(
++			_bubble.x() + padding.left(),
++			_bubble.y() + padding.top() + imageSize.height() + skip,
++			newWidth);
++	}
++	return bubbleHeight + 2 * vertical;
++}
++
++void UserBubble::paintEvent(QPaintEvent *e) {
++	auto p = QPainter(this);
++	auto hq = PainterHighQualityEnabler(p);
++	const auto radius = CardScaled(16) * 1.;
++	p.setPen(Qt::NoPen);
++	p.setBrush(st::lightButtonBgOver);
++	p.drawRoundedRect(QRectF(_bubble), radius, radius);
++	if (_imageRect.isEmpty() || _image.isNull()) {
++		return;
++	}
++	const auto ratio = style::DevicePixelRatio();
++	const auto size = _imageRect.size() * ratio;
++	if (_scaled.size() != size) {
++		_scaled = _image.scaled(
++			size,
++			Qt::IgnoreAspectRatio,
++			Qt::SmoothTransformation);
++		_scaled.setDevicePixelRatio(ratio);
++	}
++	auto path = QPainterPath();
++	const auto imageRadius = CardScaled(10) * 1.;
++	path.addRoundedRect(QRectF(_imageRect), imageRadius, imageRadius);
++	p.setClipPath(path);
++	p.drawImage(_imageRect, _scaled);
++	p.setClipping(false);
++}
++
++class AssistantText final : public Ui::RpWidget {
++public:
++	AssistantText(QWidget *parent, const QString &markdown, Fn<void()> copy);
++
++protected:
++	int resizeGetHeight(int newWidth) override;
++
++private:
++	object_ptr<Ui::FlatLabel> _label;
++	object_ptr<PaintedButton> _copy;
++
++};
++
++AssistantText::AssistantText(
++	QWidget *parent,
++	const QString &markdown,
++	Fn<void()> copy)
++: RpWidget(parent)
++, _label(this, AssistantStyle())
++, _copy(this, [](QPainter &p, QRect rect, bool over) {
++	st::menuIconCopy.paintInCenter(
++		p,
++		rect,
++		over ? st::windowFg->c : st::windowSubTextFg->c);
++}) {
++	_label->setMarkedText(Markdown(markdown));
++	_label->setSelectable(true);
++	_copy->resize(CardScaled(30), CardScaled(30));
++	_copy->setClickedCallback(std::move(copy));
++}
++
++int AssistantText::resizeGetHeight(int newWidth) {
++	const auto side = CardScaled(kSide);
++	_label->resizeToWidth(std::max(newWidth - 2 * side, 1));
++	_label->moveToLeft(side, CardScaled(4), newWidth);
++	const auto copyTop = _label->y() + _label->height() + CardScaled(2);
++	_copy->moveToLeft(side - CardScaled(6), copyTop, newWidth);
++	return copyTop + _copy->height() + CardScaled(6);
++}
++
++class EmptyState final : public Ui::RpWidget {
++public:
++	EmptyState(
++		QWidget *parent,
++		bool configured,
++		Fn<void(QString)> suggest,
++		Fn<void()> settings);
++
++	void setMinimalHeight(int height);
++
++protected:
++	int resizeGetHeight(int newWidth) override;
++	void paintEvent(QPaintEvent *e) override;
++
++private:
++	object_ptr<Ui::FlatLabel> _text;
++	std::vector<not_null<PaintedButton*>> _buttons;
++	int _minimalHeight = 0;
++	int _top = 0;
++
++};
++
++EmptyState::EmptyState(
++	QWidget *parent,
++	bool configured,
++	Fn<void(QString)> suggest,
++	Fn<void()> settings)
++: RpWidget(parent)
++, _text(
++	this,
++	(configured
++		? Tr(u"I can summarize chats, find things in them, help you "
++			"reply, or just talk."_q)
++		: Tr(u"Add an API key first: Anthropic, OpenAI or any compatible "
++			"service."_q)),
++	CenteredStyle()) {
++	const auto addButton = [&](const QString &text, bool primary) {
++		const auto button = Ui::CreateChild<PaintedButton>(this, [=](
++				QPainter &p,
++				QRect rect,
++				bool over) {
++			auto hq = PainterHighQualityEnabler(p);
++			const auto radius = rect.height() / 2.;
++			const auto half = st::lineWidth / 2.;
++			const auto inner = QRectF(rect).marginsRemoved(
++				QMarginsF(half, half, half, half));
++			if (primary) {
++				p.setPen(Qt::NoPen);
++				p.setBrush(over ? st::activeButtonBgOver : st::activeButtonBg);
++			} else {
++				auto pen = QPen(st::shadowFg->c);
++				pen.setWidthF(st::lineWidth);
++				p.setPen(pen);
++				p.setBrush(over ? st::lightButtonBgOver : st::windowBg);
++			}
++			p.drawRoundedRect(inner, radius, radius);
++			const auto font = CardFont(14, true);
++			p.setFont(font);
++			p.setPen(primary ? st::activeButtonFg : st::windowActiveTextFg);
++			p.drawText(
++				QRectF(rect),
++				Qt::AlignCenter,
++				font->elided(text, std::max(rect.width() - CardScaled(24), 0)));
++		});
++		const auto font = CardFont(14, true);
++		button->resize(
++			font->width(text) + 2 * CardScaled(20),
++			CardScaled(38));
++		_buttons.push_back(button);
++		return button;
++	};
++	if (configured) {
++		const auto list = std::vector<QString>{
++			Tr(u"What did I miss in unread chats?"_q),
++			Tr(u"Summarize my latest chat"_q),
++			Tr(u"Help me politely decline a meeting"_q),
++		};
++		for (const auto &text : list) {
++			addButton(text, false)->setClickedCallback([=] {
++				suggest(text);
++			});
++		}
++	} else {
++		addButton(Tr(u"Open settings"_q), true)->setClickedCallback(settings);
++	}
++}
++
++void EmptyState::setMinimalHeight(int height) {
++	if (_minimalHeight != height) {
++		_minimalHeight = height;
++		resizeToWidth(width());
++	}
++}
++
++int EmptyState::resizeGetHeight(int newWidth) {
++	const auto side = CardScaled(kSide);
++	const auto tile = CardScaled(72);
++	const auto titleHeight = CardFont(26, true)->height;
++	const auto textWidth = std::max(
++		std::min(newWidth - 2 * side, CardScaled(400)),
++		1);
++	_text->resizeToWidth(textWidth);
++	const auto gap = CardScaled(10);
++	auto buttons = 0;
++	for (const auto &button : _buttons) {
++		buttons += button->height() + gap;
++	}
++	if (buttons) {
++		buttons -= gap;
++	}
++	const auto content = tile
++		+ CardScaled(22)
++		+ titleHeight
++		+ CardScaled(10)
++		+ _text->height()
++		+ CardScaled(24)
++		+ buttons;
++	const auto result = std::max(content + 2 * CardScaled(24), _minimalHeight);
++	_top = (result - content) / 2;
++	const auto textTop = _top + tile + CardScaled(22) + titleHeight
++		+ CardScaled(10);
++	_text->moveToLeft((newWidth - textWidth) / 2, textTop, newWidth);
++	auto top = textTop + _text->height() + CardScaled(24);
++	for (const auto &button : _buttons) {
++		const auto buttonWidth = std::min(button->width(), newWidth - 2 * side);
++		button->resize(std::max(buttonWidth, 1), button->height());
++		button->moveToLeft((newWidth - button->width()) / 2, top, newWidth);
++		top += button->height() + gap;
++	}
++	return result;
++}
++
++void EmptyState::paintEvent(QPaintEvent *e) {
++	auto p = QPainter(this);
++	auto hq = PainterHighQualityEnabler(p);
++	const auto tile = CardScaled(72);
++	const auto left = (width() - tile) / 2;
++	const auto radius = CardScaled(20) * 1.;
++	p.setPen(Qt::NoPen);
++	p.setBrush(st::lightButtonBgOver);
++	p.drawRoundedRect(QRectF(left, _top, tile, tile), radius, radius);
++	const auto inset = CardScaled(18);
++	PaintSparkles(
++		p,
++		QRectF(
++			left + inset,
++			_top + inset,
++			tile - 2 * inset,
++			tile - 2 * inset),
++		st::windowActiveTextFg->c);
++	const auto font = CardFont(26, true);
++	const auto title = font->elided(
++		Tr(u"How can I help?"_q),
++		std::max(width() - 2 * CardScaled(kSide), 0));
++	p.setFont(font);
++	p.setPen(st::windowBoldFg);
++	p.drawText(
++		(width() - font->width(title)) / 2,
++		_top + tile + CardScaled(22) + font->ascent,
++		title);
++}
++
++} // namespace
++
++ChatView::ChatView(
++	QWidget *parent,
++	not_null<Window::SessionController*> controller)
++: RpWidget(parent)
++, _controller(controller)
++, _session(&controller->session())
++, _bar(this)
++, _scroll(this, st::boxScroll)
++, _composer(this) {
++	_content = _scroll->setOwnedWidget(
++		object_ptr<Ui::VerticalLayout>(_scroll.data()));
++	setupConfirm();
++	setupBar();
++	setupComposer();
++	Runner::For(_session).updates(
++	) | rpl::on_next([=] {
++		refresh();
++	}, lifetime());
++	refresh();
++	scrollToBottom();
++}
++
++ChatView::~ChatView() {
++	Runner::For(_session).setConfirm(nullptr);
++	if (const auto pending = base::take(_pendingConfirm)) {
++		if (const auto callback = base::take(*pending)) {
++			callback(false);
++		}
++	}
++}
++
++void ChatView::setInnerFocus() {
++	if (_field) {
++		_field->setFocusFast();
++	}
++}
++
++void ChatView::setupConfirm() {
++	Runner::For(_session).setConfirm(crl::guard(this, [=](
++			Confirmation confirmation,
++			Fn<void(bool)> decided) {
++		const auto pending = std::make_shared<Fn<void(bool)>>(decided);
++		_pendingConfirm = pending;
++		const auto decide = [=](bool approved) {
++			if (const auto callback = base::take(*pending)) {
++				callback(approved);
++			}
++		};
++		auto box = Ui::MakeConfirmBox({
++			.text = TextWithEntities::Simple(confirmation.text),
++			.confirmed = [=](Fn<void()> close) {
++				decide(true);
++				close();
++			},
++			.cancelled = [=](Fn<void()> close) {
++				decide(false);
++				close();
++			},
++			.confirmText = confirmation.confirm,
++			.title = confirmation.title,
++		});
++		box->boxClosing() | rpl::on_next([=] {
++			decide(false);
++		}, box->lifetime());
++		_controller->show(std::move(box));
++	}));
++}
++
++void ChatView::setupBar() {
++	_barLabel = Ui::CreateChild<Ui::FlatLabel>(
++		_bar.data(),
++		QString(),
++		BarStyle());
++	_barStop = Ui::CreateChild<Ui::RoundButton>(
++		_bar.data(),
++		rpl::single(Tr(u"Stop"_q)),
++		st::attentionBoxButton);
++	_barStop->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
++	_barStop->setClickedCallback([=] {
++		StopAutoReplies(_session);
++	});
++	_bar->paintRequest() | rpl::on_next([=] {
++		auto p = QPainter(_bar.data());
++		auto hq = PainterHighQualityEnabler(p);
++		const auto margin = CardScaled(12);
++		const auto rect = QRectF(
++			margin,
++			CardScaled(6),
++			_bar->width() - 2 * margin,
++			_bar->height() - CardScaled(10));
++		const auto radius = CardScaled(14) * 1.;
++		p.setPen(Qt::NoPen);
++		p.setBrush(st::windowBgOver);
++		p.drawRoundedRect(rect, radius, radius);
++	}, _bar->lifetime());
++	_bar->sizeValue() | rpl::on_next([=](QSize size) {
++		const auto margin = CardScaled(12) + CardScaled(14);
++		const auto center = CardScaled(6) + (size.height() - CardScaled(10)) / 2;
++		_barStop->moveToRight(
++			CardScaled(12) + CardScaled(4),
++			center - _barStop->height() / 2,
++			size.width());
++		_barLabel->resizeToWidth(std::max(
++			size.width() - margin - _barStop->width() - CardScaled(20),
++			1));
++		_barLabel->moveToLeft(
++			margin,
++			center - _barLabel->height() / 2,
++			size.width());
++	}, _bar->lifetime());
++	const auto update = [=] {
++		auto active = std::vector<AutoReply>();
++		for (const auto &entry : AutoReplies(_session)) {
++			if (entry.enabled) {
++				active.push_back(entry);
++			}
++		}
++		_barShown = !active.empty();
++		if (_barShown) {
++			_barLabel->setText((active.size() == 1)
++				? Tr(u"Auto-reply: %1"_q).arg(active.front().title)
++				: TrCount(
++					int(active.size()),
++					u"Auto-reply in %1 chat"_q,
++					u"Auto-reply is on in %1 chats"_q));
++			_barStop->setText(rpl::single((active.size() == 1)
++				? Tr(u"Stop"_q)
++				: Tr(u"Stop all"_q)));
++		}
++		_bar->setVisible(_barShown);
++		layout();
++	};
++	AutoRepliesChanges(
++		_session
++	) | rpl::on_next(update, _bar->lifetime());
++	update();
++}
++
++void ChatView::setupComposer() {
++	const auto composer = _composer.data();
++	_attach = Ui::CreateChild<Ui::IconButton>(composer, st::historyAttach);
++	_field = Ui::CreateChild<Ui::InputField>(
++		composer,
++		FieldStyle(),
++		Ui::InputField::Mode::MultiLine,
++		rpl::single(Tr(u"Message the agent"_q)),
++		QString());
++	_field->setSubmitSettings(Ui::InputField::SubmitSettings::Enter);
++	_field->setMaxHeight(CardScaled(160));
++	_send = Ui::CreateChild<Ui::SendButton>(composer, st::aiComposeSendButton);
++	_send->setState({ .type = Ui::SendButton::Type::Send });
++	const auto preview = Ui::CreateChild<PaintedButton>(composer, [=](
++			QPainter &p,
++			QRect rect,
++			bool over) {
++		if (_pendingThumb.isNull()) {
++			return;
++		}
++		auto hq = PainterHighQualityEnabler(p);
++		const auto size = CardScaled(64);
++		const auto target = QRect(0, (rect.height() - size) / 2, size, size);
++		auto path = QPainterPath();
++		const auto radius = CardScaled(10) * 1.;
++		path.addRoundedRect(QRectF(target), radius, radius);
++		p.setClipPath(path);
++		const auto source = _pendingThumb.size();
++		const auto side = std::min(source.width(), source.height());
++		p.drawImage(
++			target,
++			_pendingThumb,
++			QRect(
++				(source.width() - side) / 2,
++				(source.height() - side) / 2,
++				side,
++				side));
++		p.setClipping(false);
++		const auto cross = CardScaled(20);
++		const auto circle = QRectF(
++			target.x() + target.width() - cross + CardScaled(4),
++			target.y() - CardScaled(4),
++			cross,
++			cross);
++		p.setPen(Qt::NoPen);
++		p.setBrush(over ? st::windowBoldFg : st::windowSubTextFg);
++		p.drawEllipse(circle);
++		auto pen = QPen(st::windowBg->c);
++		pen.setWidthF(CardScaled(2));
++		pen.setCapStyle(Qt::RoundCap);
++		p.setPen(pen);
++		const auto inset = cross * 0.32;
++		p.drawLine(
++			QPointF(circle.left() + inset, circle.top() + inset),
++			QPointF(circle.right() - inset, circle.bottom() - inset));
++		p.drawLine(
++			QPointF(circle.right() - inset, circle.top() + inset),
++			QPointF(circle.left() + inset, circle.bottom() - inset));
++	});
++	preview->setClickedCallback([=] {
++		clearPendingImage();
++	});
++	preview->hide();
++	_preview = preview;
++	_attach->setClickedCallback([=] {
++		chooseImage();
++	});
++	_send->setClickedCallback([=] {
++		auto &runner = Runner::For(_session);
++		if (runner.running()) {
++			runner.stop();
++		} else {
++			submit();
++		}
++	});
++	_field->submits() | rpl::on_next([=] {
++		submit();
++	}, _field->lifetime());
++	_field->heightChanges() | rpl::on_next([=] {
++		layout();
++	}, _field->lifetime());
++	composer->paintRequest() | rpl::on_next([=] {
++		auto p = QPainter(composer);
++		auto hq = PainterHighQualityEnabler(p);
++		p.fillRect(0, 0, composer->width(), st::lineWidth, st::shadowFg);
++		const auto radius = std::min(_fieldBg.height() / 2., CardScaled(22) * 1.);
++		p.setPen(Qt::NoPen);
++		p.setBrush(st::windowBgOver);
++		p.drawRoundedRect(QRectF(_fieldBg), radius, radius);
++	}, composer->lifetime());
++}
++
++int ChatView::layoutComposer(int width) {
++	const auto padding = CardScaled(12);
++	const auto single = CardScaled(44);
++	const auto previewHeight = _pendingImage ? CardScaled(72) : 0;
++	_preview->setVisible(previewHeight > 0);
++	if (previewHeight) {
++		_preview->setGeometry(
++			padding + _attach->width() + CardScaled(6),
++			padding,
++			CardScaled(80),
++			previewHeight);
++	}
++	const auto top = padding + (previewHeight
++		? (previewHeight + CardScaled(8))
++		: 0);
++	const auto inner = CardScaled(14);
++	const auto fieldLeft = padding + _attach->width() + CardScaled(6) + inner;
++	const auto fieldRight = width
++		- padding
++		- _send->width()
++		- CardScaled(8)
++		- inner;
++	const auto fieldWidth = std::max(fieldRight - fieldLeft, 1);
++	_field->resizeToWidth(fieldWidth);
++	const auto background = std::max(
++		_field->height() + 2 * CardScaled(4),
++		single);
++	_field->moveToLeft(
++		fieldLeft,
++		top + (background - _field->height()) / 2,
++		width);
++	_fieldBg = QRect(
++		fieldLeft - inner,
++		top,
++		fieldWidth + 2 * inner,
++		background);
++	const auto lineCenter = top + background - single / 2;
++	_attach->moveToLeft(
++		padding,
++		lineCenter - _attach->height() / 2,
++		width);
++	_send->moveToLeft(
++		width - padding - _send->width(),
++		lineCenter - _send->height() / 2,
++		width);
++	return top + background + padding;
++}
++
++void ChatView::layout() {
++	const auto width = this->width();
++	const auto height = this->height();
++	if (width <= 0 || height <= 0) {
++		return;
++	}
++	auto top = 0;
++	if (_barShown) {
++		_bar->setGeometry(0, 0, width, CardScaled(kBarHeight));
++		top = CardScaled(kBarHeight);
++	}
++	const auto composerHeight = layoutComposer(width);
++	_composer->setGeometry(0, height - composerHeight, width, composerHeight);
++	_composer->update();
++	_scroll->setGeometry(
++		0,
++		top,
++		width,
++		std::max(height - top - composerHeight, 0));
++	_content->resizeToWidth(width);
++	if (_empty) {
++		static_cast<EmptyState*>(_empty)->setMinimalHeight(_scroll->height());
++	}
++}
++
++void ChatView::resizeEvent(QResizeEvent *e) {
++	layout();
++}
++
++void ChatView::paintEvent(QPaintEvent *e) {
++	auto p = QPainter(this);
++	p.fillRect(e->rect(), st::windowBg);
++}
++
++void ChatView::refresh() {
++	const auto &runner = Runner::For(_session);
++	const auto &messages = runner.messages();
++	const auto count = int(messages.size());
++	const auto lastId = count ? messages.back().id : QString();
++	const auto running = runner.running();
++	const auto configured = !runner.key(CurrentProvider()).isEmpty();
++	const auto wasTop = _scroll->scrollTop();
++	const auto atBottom = (wasTop
++		>= _scroll->scrollTopMax() - CardScaled(48));
++	auto rebuilt = false;
++	if (count != _shownCount
++		|| lastId != _shownLastId
++		|| runner.lastError() != _shownError
++		|| running != _shownRunning
++		|| configured != _shownConfigured) {
++		_shownCount = count;
++		_shownLastId = lastId;
++		_shownError = runner.lastError();
++		_shownRunning = running;
++		_shownConfigured = configured;
++		rebuild();
++		rebuilt = true;
++	}
++	if (_live) {
++		const auto streaming = runner.streaming();
++		if (streaming.isEmpty()) {
++			_live->setTextColorOverride(st::windowSubTextFg->c);
++			_live->setText(runner.status().isEmpty()
++				? Tr(u"Thinking…"_q)
++				: runner.status());
++		} else {
++			_live->setTextColorOverride(std::nullopt);
++			_live->setMarkedText(TextWithEntities::Simple(streaming));
++		}
++	}
++	_send->setState({
++		.type = (running
++			? Ui::SendButton::Type::Stop
++			: Ui::SendButton::Type::Send),
++	});
++	_content->resizeToWidth(_scroll->width());
++	if (atBottom) {
++		scrollToBottom();
++	} else if (rebuilt) {
++		_scroll->scrollToY(wasTop);
++	}
++}
++
++void ChatView::rebuild() {
++	_content->clear();
++	_live = nullptr;
++	_empty = nullptr;
++	const auto &runner = Runner::For(_session);
++	if (runner.messages().empty() && !runner.running()) {
++		addEmptyState();
++	} else {
++		addMessages();
++	}
++	_content->resizeToWidth(_scroll->width());
++}
++
++void ChatView::addEmptyState() {
++	const auto session = _session;
++	const auto controller = _controller;
++	const auto empty = _content->add(object_ptr<EmptyState>(
++		_content,
++		_shownConfigured,
++		[=](QString text) {
++			Runner::For(session).send(text);
++		},
++		[=] {
++			ShowAgentSettings(controller);
++		}));
++	empty->setMinimalHeight(_scroll->height());
++	_empty = empty;
++}
++
++void ChatView::addMessages() {
++	const auto &runner = Runner::For(_session);
++	const auto &list = runner.messages();
++	const auto side = CardScaled(kSide);
++	const auto controller = _controller;
++	_content->add(object_ptr<Ui::FixedHeightWidget>(
++		_content,
++		CardScaled(12)));
++	for (auto i = 0; i != int(list.size()); ++i) {
++		const auto &message = list[i];
++		if (message.role == Role::User) {
++			if (!message.text.isEmpty() || !message.images.empty()) {
++				_content->add(object_ptr<UserBubble>(_content, message));
++			}
++			continue;
++		} else if (message.role != Role::Assistant) {
++			continue;
++		}
++		if (!message.text.trimmed().isEmpty()) {
++			const auto text = message.text;
++			_content->add(object_ptr<AssistantText>(_content, text, [=] {
++				CopyMarkdown(text);
++				controller->showToast(Tr(u"Copied."_q));
++			}));
++		}
++		for (const auto &call : message.toolCalls) {
++			auto data = ChipData{ .name = call.name };
++			const auto j = std::find_if(
++				begin(list) + i + 1,
++				end(list),
++				[&](const Message &result) {
++					return (result.role == Role::Tool)
++						&& (result.toolCallId == call.id);
++				});
++			if (j == end(list)) {
++				data.state = runner.running()
++					? ChipState::Running
++					: ChipState::Failed;
++				data.title = RunningLabel(call.name);
++			} else {
++				data.state = j->isError ? ChipState::Failed : ChipState::Done;
++				data.title = j->toolTitle.isEmpty()
++					? (j->isError
++						? RunningLabel(call.name)
++						: Tr(u"Used a tool"_q))
++					: j->toolTitle;
++				if (j->isError) {
++					data.reason = j->text.simplified().left(160);
++				}
++			}
++			_content->add(object_ptr<ToolChip>(_content, std::move(data)));
++		}
++	}
++	if (runner.running()) {
++		_live = _content->add(
++			object_ptr<Ui::FlatLabel>(_content, AssistantStyle()),
++			QMargins(side, CardScaled(4), side, CardScaled(8)));
++		_live->setSelectable(true);
++	}
++	if (!runner.lastError().isEmpty()) {
++		_content->add(
++			object_ptr<Ui::FlatLabel>(
++				_content,
++				runner.lastError(),
++				ErrorStyle()),
++			QMargins(side, CardScaled(6), side, CardScaled(6)));
++		if (runner.canRetry()) {
++			const auto session = _session;
++			const auto retry = _content->add(
++				object_ptr<Ui::LinkButton>(_content, Tr(u"Try again"_q)),
++				QMargins(side, 0, side, CardScaled(6)));
++			retry->setClickedCallback([=] {
++				Runner::For(session).retry();
++			});
++		}
++	}
++	_content->add(object_ptr<Ui::FixedHeightWidget>(
++		_content,
++		CardScaled(12)));
++}
++
++void ChatView::submit() {
++	auto &runner = Runner::For(_session);
++	if (runner.running()) {
++		return;
++	}
++	const auto text = _field->getLastText().trimmed();
++	auto images = std::vector<Image>();
++	if (_pendingImage) {
++		images.push_back(*_pendingImage);
++	}
++	if (text.isEmpty() && images.empty()) {
++		return;
++	}
++	_field->clear();
++	clearPendingImage();
++	runner.send(text, std::move(images));
++	scrollToBottom();
++}
++
++void ChatView::chooseImage() {
++	FileDialog::GetOpenPath(
++		this,
++		Tr(u"Attach photo"_q),
++		FileDialog::ImagesFilter(),
++		crl::guard(this, [=](FileDialog::OpenResult &&result) {
++			auto image = Images::Read({
++				.path = (result.paths.isEmpty()
++					? QString()
++					: result.paths.front()),
++				.content = result.remoteContent,
++			}).image;
++			if (image.isNull()) {
++				_controller->showToast(Tr(u"Could not open the image."_q));
++				return;
++			}
++			setPendingImage(std::move(image));
++		}));
++}
++
++void ChatView::setPendingImage(QImage image) {
++	auto encoded = PreparePhoto(image);
++	if (encoded.base64.isEmpty()) {
++		_controller->showToast(Tr(u"Could not open the image."_q));
++		return;
++	}
++	_pendingImage = std::move(encoded);
++	const auto ratio = style::DevicePixelRatio();
++	const auto side = CardScaled(64) * ratio;
++	_pendingThumb = image.scaled(
++		side,
++		side,
++		Qt::KeepAspectRatioByExpanding,
++		Qt::SmoothTransformation);
++	layout();
++	_preview->update();
++	_field->setFocusFast();
++}
++
++void ChatView::clearPendingImage() {
++	_pendingImage.reset();
++	_pendingThumb = QImage();
++	layout();
++}
++
++void ChatView::scrollToBottom() {
++	crl::on_main(this, [=] {
++		_scroll->scrollToY(_scroll->scrollTopMax());
++	});
++}
++
++} // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_chat.h b/Telegram/SourceFiles/tele/agent/agent_chat.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..742a53b4a3e23f33b5ecb7524aba0ecb6f3c1eb6
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/agent/agent_chat.h
+@@ -0,0 +1,85 @@
++#pragma once
++
++#include "base/object_ptr.h"
++#include "tele/agent/agent_protocol.h"
++#include "ui/rp_widget.h"
++
++#include <optional>
++
++namespace Main {
++class Session;
++} // namespace Main
++
++namespace Ui {
++class FlatLabel;
++class IconButton;
++class InputField;
++class RoundButton;
++class ScrollArea;
++class SendButton;
++class VerticalLayout;
++} // namespace Ui
++
++namespace Window {
++class SessionController;
++} // namespace Window
++
++namespace Tele::Agent {
++
++class ChatView final : public Ui::RpWidget {
++public:
++	ChatView(
++		QWidget *parent,
++		not_null<Window::SessionController*> controller);
++	~ChatView();
++
++	void setInnerFocus();
++
++protected:
++	void resizeEvent(QResizeEvent *e) override;
++	void paintEvent(QPaintEvent *e) override;
++
++private:
++	void setupConfirm();
++	void setupBar();
++	void setupComposer();
++	void refresh();
++	void rebuild();
++	void addEmptyState();
++	void addMessages();
++	void layout();
++	[[nodiscard]] int layoutComposer(int width);
++	void submit();
++	void chooseImage();
++	void setPendingImage(QImage image);
++	void clearPendingImage();
++	void scrollToBottom();
++
++	const not_null<Window::SessionController*> _controller;
++	const not_null<Main::Session*> _session;
++	object_ptr<Ui::RpWidget> _bar;
++	Ui::FlatLabel *_barLabel = nullptr;
++	Ui::RoundButton *_barStop = nullptr;
++	object_ptr<Ui::ScrollArea> _scroll;
++	Ui::VerticalLayout *_content = nullptr;
++	object_ptr<Ui::RpWidget> _composer;
++	Ui::RpWidget *_preview = nullptr;
++	Ui::IconButton *_attach = nullptr;
++	Ui::InputField *_field = nullptr;
++	Ui::SendButton *_send = nullptr;
++	Ui::FlatLabel *_live = nullptr;
++	Ui::RpWidget *_empty = nullptr;
++	std::shared_ptr<Fn<void(bool)>> _pendingConfirm;
++	std::optional<Image> _pendingImage;
++	QImage _pendingThumb;
++	QRect _fieldBg;
++	int _shownCount = -1;
++	QString _shownLastId;
++	QString _shownError;
++	bool _shownRunning = false;
++	bool _shownConfigured = false;
++	bool _barShown = false;
++
++};
++
++} // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_navigation.cpp b/Telegram/SourceFiles/tele/agent/agent_navigation.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..ff4e60e1e8463e7c0ecaa792e1163ea32cc7c65f
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/agent/agent_navigation.cpp
+@@ -0,0 +1,418 @@
++#include "tele/agent/agent_navigation.h"
++
++#include "base/unique_qptr.h"
++#include "base/unixtime.h"
++#include "core/application.h"
++#include "core/core_settings.h"
++#include "dialogs/dialogs_three_state_icon.h"
++#include "main/main_session.h"
++#include "tele/agent/agent_panel.h"
++#include "tele/agent/agent_runner.h"
++#include "tele/agent/agent_section.h"
++#include "tele/agent/agent_store.h"
++#include "tele/tele_card_widgets.h"
++#include "tele/tele_compact_folders.h"
++#include "tele/tele_lowercase.h"
++#include "tele/tele_options.h"
++#include "ui/painter.h"
++#include "ui/text/format_values.h"
++#include "ui/widgets/buttons.h"
++#include "ui/widgets/chat_filters_tabs_mode.h"
++#include "ui/wrap/slide_wrap.h"
++#include "ui/wrap/vertical_layout.h"
++#include "window/window_separate_id.h"
++#include "window/window_session_controller.h"
++#include "styles/style_basic.h"
++#include "styles/style_dialogs.h"
++#include "styles/style_filter_icons.h"
++#include "styles/style_widgets.h"
++#include "styles/style_window.h"
++
++namespace Tele::Agent {
++namespace {
++
++[[nodiscard]] rpl::producer<bool> ConfiguredValue(
++		not_null<Main::Session*> session) {
++	return rpl::single(
++		rpl::empty
++	) | rpl::then(rpl::merge(
++		Runner::For(session).updates(),
++		AgentProviderValue() | rpl::to_empty
++	)) | rpl::map([=] {
++		return !Runner::For(session).key(CurrentProvider()).isEmpty();
++	}) | rpl::distinct_until_changed();
++}
++
++[[nodiscard]] rpl::producer<bool> SidebarShownValue(
++		not_null<Window::SessionController*> controller) {
++	return rpl::single(
++		rpl::empty
++	) | rpl::then(
++		controller->filtersMenuChanged()
++	) | rpl::map([=] {
++		return (controller->filtersWidth() > 0);
++	}) | rpl::distinct_until_changed();
++}
++
++[[nodiscard]] const style::SideBarButton &ButtonStyle(
++		Ui::ChatsFiltersTabsMode mode) {
++	using Mode = Ui::ChatsFiltersTabsMode;
++	switch (mode) {
++	case Mode::TextOnly: return st::windowFiltersButtonTextOnly;
++	case Mode::TextAndIcons: return st::windowFiltersButton;
++	case Mode::IconsOnly: return Tele::FolderBarStyle(
++		st::windowFiltersButtonIconsOnly);
++	case Mode::Default: break;
++	}
++	return st::windowFiltersButton;
++}
++
++[[nodiscard]] QString PlainPreview(QString text) {
++	for (const auto &marker : {
++			u"**"_q,
++			u"__"_q,
++			u"~~"_q,
++			u"||"_q,
++			u"`"_q,
++		}) {
++		text.remove(marker);
++	}
++	return text.simplified();
++}
++
++class SideButton final : public Ui::RippleButton {
++public:
++	SideButton(
++		QWidget *parent,
++		const style::SideBarButton &st,
++		Ui::ChatsFiltersTabsMode mode);
++
++	void setActive(bool active);
++
++protected:
++	int resizeGetHeight(int newWidth) override;
++	void paintEvent(QPaintEvent *e) override;
++
++private:
++	const style::SideBarButton &_st;
++	const bool _showIcon = true;
++	const bool _showText = true;
++	bool _active = false;
++
++};
++
++SideButton::SideButton(
++	QWidget *parent,
++	const style::SideBarButton &st,
++	Ui::ChatsFiltersTabsMode mode)
++: RippleButton(parent, st.ripple)
++, _st(st)
++, _showIcon(mode != Ui::ChatsFiltersTabsMode::TextOnly)
++, _showText(mode != Ui::ChatsFiltersTabsMode::IconsOnly) {
++	setAccessibleName(Tr(u"Agent"_q));
++}
++
++void SideButton::setActive(bool active) {
++	if (_active != active) {
++		_active = active;
++		update();
++	}
++}
++
++int SideButton::resizeGetHeight(int newWidth) {
++	return _st.minHeight;
++}
++
++void SideButton::paintEvent(QPaintEvent *e) {
++	auto p = QPainter(this);
++	p.fillRect(e->rect(), _active ? _st.textBgActive : _st.textBg);
++	paintRipple(p, 0, 0);
++	if (_showIcon) {
++		const auto box = Tele::FolderBarIconSize(st::foldersBots.width());
++		const auto x = (_st.iconPosition.x() < 0)
++			? (width() - box) / 2
++			: _st.iconPosition.x();
++		const auto y = (_st.iconPosition.y() < 0)
++			? (height() - box) / 2
++			: _st.iconPosition.y();
++		const auto inset = box * 0.16;
++		PaintSparkles(
++			p,
++			QRectF(x + inset, y + inset, box - 2 * inset, box - 2 * inset),
++			(_active ? st::sideBarIconFgActive : st::sideBarIconFg)->c);
++	}
++	if (_showText) {
++		const auto &font = _st.style.font;
++		const auto available = std::max(width() - 2 * _st.textSkip, 0);
++		const auto text = font->elided(Tr(u"Agent"_q), available);
++		p.setFont(font);
++		p.setPen(_active ? _st.textFgActive : _st.textFg);
++		p.drawText(
++			(width() - font->width(text)) / 2,
++			_st.textTop + font->ascent,
++			text);
++	}
++}
++
++class AgentChatRow final : public Ui::RippleButton {
++public:
++	AgentChatRow(
++		QWidget *parent,
++		not_null<Window::SessionController*> controller);
++
++protected:
++	int resizeGetHeight(int newWidth) override;
++	void paintEvent(QPaintEvent *e) override;
++
++private:
++	void refreshPreview();
++
++	const not_null<Window::SessionController*> _controller;
++	QString _preview;
++	TimeId _date = 0;
++	bool _active = false;
++
++};
++
++AgentChatRow::AgentChatRow(
++	QWidget *parent,
++	not_null<Window::SessionController*> controller)
++: RippleButton(parent, st::dialogsRipple)
++, _controller(controller) {
++	setAccessibleName(Tr(u"AI agent"_q));
++	const auto session = &controller->session();
++	Runner::For(session).updates(
++	) | rpl::on_next([=] {
++		refreshPreview();
++	}, lifetime());
++	AgentSectionShownValue(
++		controller
++	) | rpl::on_next([=](bool shown) {
++		_active = shown;
++		update();
++	}, lifetime());
++	HideListPreviewsChanges() | rpl::on_next([=] {
++		resizeToWidth(width());
++		update();
++	}, lifetime());
++	refreshPreview();
++}
++
++void AgentChatRow::refreshPreview() {
++	const auto &messages = Runner::For(&_controller->session()).messages();
++	auto preview = QString();
++	auto date = TimeId(0);
++	for (auto i = int(messages.size()); i != 0; --i) {
++		const auto &message = messages[i - 1];
++		if (message.role == Role::Tool || message.text.trimmed().isEmpty()) {
++			continue;
++		}
++		preview = PlainPreview(message.text);
++		date = TimeId(message.date);
++		break;
++	}
++	if (preview.isEmpty()) {
++		preview = Tr(u"Message the agent"_q);
++	}
++	if (_preview != preview || _date != date) {
++		_preview = preview;
++		_date = date;
++		update();
++	}
++}
++
++int AgentChatRow::resizeGetHeight(int newWidth) {
++	return HideListPreviews()
++		? (2 * style::ConvertScale(6) + style::ConvertScale(28))
++		: st::defaultDialogRow.height;
++}
++
++void AgentChatRow::paintEvent(QPaintEvent *e) {
++	auto p = Painter(this);
++	const auto &row = st::defaultDialogRow;
++	const auto width = this->width();
++	const auto selected = isOver();
++	const auto active = _active;
++	p.fillRect(
++		e->rect(),
++		active
++			? st::dialogsBgActive
++			: selected
++			? st::dialogsBgOver
++			: st::dialogsBg);
++	paintRipple(
++		p,
++		0,
++		0,
++		active ? &st::dialogsRippleBgActive->c : nullptr);
++	const auto compact = HideListPreviews();
++	const auto photo = compact ? style::ConvertScale(28) : row.photoSize;
++	const auto top = compact ? style::ConvertScale(6) : row.padding.top();
++	const auto left = row.padding.left();
++	{
++		auto hq = PainterHighQualityEnabler(p);
++		p.setPen(Qt::NoPen);
++		p.setBrush(active ? st::dialogsBg : st::activeButtonBg);
++		p.drawEllipse(QRectF(left, top, photo, photo));
++		const auto inset = photo * 0.26;
++		PaintSparkles(
++			p,
++			QRectF(
++				left + inset,
++				top + inset,
++				photo - 2 * inset,
++				photo - 2 * inset),
++			(active ? st::dialogsBgActive : st::activeButtonFg)->c);
++	}
++	if (width < st::columnMinimalWidthLeft / 2) {
++		return;
++	}
++	const auto nameLeft = compact
++		? (row.nameLeft - (row.photoSize - photo))
++		: row.nameLeft;
++	const auto nameTop = compact
++		? (height() - st::semiboldFont->height) / 2
++		: row.nameTop;
++	auto nameWidth = width - nameLeft - row.padding.right();
++	if (_date) {
++		const auto text = Ui::FormatDialogsDate(
++			base::unixtime::parse(_date));
++		const auto textWidth = st::dialogsDateFont->width(text);
++		nameWidth -= textWidth + st::dialogsDateSkip;
++		p.setFont(st::dialogsDateFont);
++		p.setPen(active
++			? st::dialogsDateFgActive
++			: selected
++			? st::dialogsDateFgOver
++			: st::dialogsDateFg);
++		p.drawText(
++			width - row.padding.right() - textWidth,
++			nameTop + st::semiboldFont->height - st::normalFont->descent,
++			text);
++	}
++	p.setFont(st::semiboldFont);
++	p.setPen(active
++		? st::dialogsNameFgActive
++		: selected
++		? st::dialogsNameFgOver
++		: st::dialogsNameFg);
++	p.drawTextLeft(
++		nameLeft,
++		nameTop,
++		width,
++		st::semiboldFont->elided(Tr(u"AI agent"_q), std::max(nameWidth, 0)));
++	if (compact) {
++		return;
++	}
++	const auto &icon = Dialogs::ThreeStateIcon(
++		st::dialogsPinnedIcon,
++		active,
++		selected);
++	icon.paint(p, width - row.padding.right() - icon.width(), row.textTop, width);
++	const auto available = width
++		- row.textLeft
++		- row.padding.right()
++		- icon.width()
++		- st::dialogsUnreadPadding;
++	p.setFont(st::dialogsTextFont);
++	p.setPen(active
++		? st::dialogsTextFgActive
++		: selected
++		? st::dialogsTextFgOver
++		: st::dialogsTextFg);
++	p.drawTextLeft(
++		row.textLeft,
++		row.textTop,
++		width,
++		st::dialogsTextFont->elided(_preview, std::max(available, 0)));
++}
++
++} // namespace
++
++void SetupFiltersMenuButton(
++		not_null<Ui::VerticalLayout*> container,
++		not_null<Window::SessionController*> controller) {
++	const auto session = &controller->session();
++	const auto current = container->lifetime().make_state<
++		base::unique_qptr<Ui::SlideWrap<SideButton>>>();
++	Core::App().settings().chatFiltersTabsModeValue(
++	) | rpl::on_next([=](Ui::ChatsFiltersTabsMode value) {
++		const auto mode = Ui::VerticalChatsFiltersTabsMode(value);
++		const auto &st = ButtonStyle(mode);
++		*current = nullptr;
++		const auto wrap = container->insert(
++			std::min(1, container->count()),
++			object_ptr<Ui::SlideWrap<SideButton>>(
++				container,
++				object_ptr<SideButton>(container, st, mode)));
++		*current = base::unique_qptr<Ui::SlideWrap<SideButton>>(wrap);
++		const auto button = wrap->entity();
++		button->setClickedCallback([=] {
++			ShowAgent(controller);
++		});
++		AgentSectionShownValue(
++			controller
++		) | rpl::on_next([=](bool shown) {
++			button->setActive(shown);
++		}, button->lifetime());
++		wrap->toggleOn(rpl::combine(
++			ConfiguredValue(session),
++			AgentNavigationValue()
++		) | rpl::map([](bool configured, const QString &navigation) {
++			return configured && (navigation != u"chat"_q);
++		}), anim::type::instant);
++		wrap->finishAnimating();
++	}, container->lifetime());
++}
++
++void SetupDialogsTopRow(DialogsTopRowDescriptor &&descriptor) {
++	const auto controller = descriptor.controller;
++	if (!descriptor.main || !controller->windowId().primary()) {
++		return;
++	}
++	const auto list = descriptor.list;
++	const auto inner = descriptor.inner;
++	auto index = list->count();
++	for (auto i = 0; i != list->count(); ++i) {
++		if (list->widgetAt(i).get() == inner.get()) {
++			index = i;
++			break;
++		}
++	}
++	const auto wrap = list->insert(
++		index,
++		object_ptr<Ui::SlideWrap<AgentChatRow>>(
++			list,
++			object_ptr<AgentChatRow>(list, controller)));
++	wrap->entity()->setClickedCallback([=] {
++		ShowAgent(controller);
++	});
++	const auto session = &controller->session();
++	auto placement = rpl::combine(
++		ConfiguredValue(session),
++		AgentNavigationValue(),
++		SidebarShownValue(controller)
++	) | rpl::map([](
++			bool configured,
++			const QString &navigation,
++			bool sidebar) {
++		return configured && ((navigation == u"chat"_q) || !sidebar);
++	});
++	auto main = rpl::combine(
++		std::move(descriptor.filter),
++		std::move(descriptor.subsection),
++		std::move(descriptor.searching),
++		std::move(descriptor.searchInPeer)
++	) | rpl::map([](int32 filter, bool subsection, bool searching, bool peer) {
++		return !filter && !subsection && !searching && !peer;
++	});
++	wrap->toggleOn(rpl::combine(
++		std::move(placement),
++		std::move(main)
++	) | rpl::map([](bool placed, bool shown) {
++		return placed && shown;
++	}), anim::type::instant);
++	wrap->finishAnimating();
++}
++
++} // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_navigation.h b/Telegram/SourceFiles/tele/agent/agent_navigation.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..45f9ecade133428274345b9802dbec11b1825b32
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/agent/agent_navigation.h
+@@ -0,0 +1,30 @@
++#pragma once
++
++namespace Ui {
++class RpWidget;
++class VerticalLayout;
++} // namespace Ui
++
++namespace Window {
++class SessionController;
++} // namespace Window
++
++namespace Tele::Agent {
++
++struct DialogsTopRowDescriptor {
++	not_null<Window::SessionController*> controller;
++	not_null<Ui::VerticalLayout*> list;
++	not_null<Ui::RpWidget*> inner;
++	bool main = false;
++	rpl::producer<int32> filter;
++	rpl::producer<bool> subsection;
++	rpl::producer<bool> searching;
++	rpl::producer<bool> searchInPeer;
++};
++
++void SetupFiltersMenuButton(
++	not_null<Ui::VerticalLayout*> container,
++	not_null<Window::SessionController*> controller);
++void SetupDialogsTopRow(DialogsTopRowDescriptor &&descriptor);
++
++} // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_panel.cpp b/Telegram/SourceFiles/tele/agent/agent_panel.cpp
+index 9741655cd52833c53dfe654af71eb06da89e8a0b..4a62934b227812877a5f2a994de26e54f8e5b4e6 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_panel.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_panel.cpp
+@@ -1,30 +1,23 @@
+ #include "tele/agent/agent_panel.h"
+-#include "tele/agent/agent_markdown.h"
+ 
+ #include "base/options.h"
+ #include "core/application.h"
+ #include "main/main_session.h"
+ #include "settings/settings_common.h"
+-#include "tele/agent/agent_auto_reply.h"
+ #include "tele/agent/agent_runner.h"
++#include "tele/agent/agent_section.h"
+ #include "tele/agent/agent_store.h"
+ #include "tele/tele_lowercase.h"
+ #include "tele/tele_mad_links.h"
+ #include "tele/tele_options.h"
+-#include "ui/boxes/confirm_box.h"
+ #include "ui/layers/generic_box.h"
+-#include "ui/text/text_utilities.h"
+-#include "ui/ui_utility.h"
+ #include "ui/widgets/buttons.h"
+ #include "ui/widgets/fields/input_field.h"
+ #include "ui/widgets/fields/password_input.h"
+ #include "ui/widgets/labels.h"
+-#include "ui/widgets/menu/menu_add_action_callback.h"
+-#include "ui/widgets/scroll_area.h"
+-#include "ui/widgets/separate_panel.h"
+-#include "ui/widgets/shadow.h"
+ #include "ui/wrap/slide_wrap.h"
+ #include "ui/wrap/vertical_layout.h"
++#include "window/window_controller.h"
+ #include "window/window_session_controller.h"
+ #include "styles/style_boxes.h"
+ #include "styles/style_layers.h"
+@@ -35,441 +28,16 @@
+ #include "styles/style_window_main_menu.h"
+ 
+ namespace Tele::Agent {
+-namespace {
+ 
+-struct Opened {
+-	std::unique_ptr<Ui::SeparatePanel> panel;
+-	std::shared_ptr<Fn<void(bool)>> pending;
+-};
+-
+-[[nodiscard]] base::flat_map<not_null<Main::Session*>, Opened> &Panels() {
+-	static auto result = base::flat_map<not_null<Main::Session*>, Opened>();
+-	return result;
+-}
+-
+-[[nodiscard]] TextWithEntities Markdown(const QString &text) {
+-	constexpr auto kMaxCached = 512;
+-	static auto cache = base::flat_map<QString, TextWithEntities>();
+-	if (const auto i = cache.find(text); i != end(cache)) {
+-		return i->second;
+-	}
+-	auto result = MarkdownToEntities(text);
+-	const auto links = TextUtilities::ParseEntities(
+-		result.text,
+-		TextParseLinks).entities;
+-	for (const auto &link : links) {
+-		const auto from = link.offset();
+-		const auto till = from + link.length();
+-		const auto blocked = ranges::any_of(result.entities, [&](
+-				const EntityInText &entity) {
+-			const auto type = entity.type();
+-			return (entity.offset() < till)
+-				&& (entity.offset() + entity.length() > from)
+-				&& (type == EntityType::CustomUrl
+-					|| type == EntityType::Code
+-					|| type == EntityType::Pre);
+-		});
+-		if (!blocked) {
+-			result.entities.push_back(link);
+-		}
+-	}
+-	ranges::stable_sort(
+-		result.entities,
+-		ranges::less(),
+-		&EntityInText::offset);
+-	if (int(cache.size()) >= kMaxCached) {
+-		cache.clear();
+-	}
+-	cache.emplace(text, result);
+-	return result;
+-}
+-
+-[[nodiscard]] TextWithEntities Authored(
+-		const QString &author,
+-		TextWithEntities text) {
+-	auto result = Ui::Text::Bold(author);
+-	result.append('\n');
+-	result.append(std::move(text));
+-	return result;
+-}
+-
+-[[nodiscard]] QMargins RowMargins(int top, int bottom) {
+-	const auto &padding = st::boxRowPadding;
+-	return QMargins(padding.left(), top, padding.right(), bottom);
+-}
+-
+-void AddMessage(
+-		not_null<Ui::VerticalLayout*> content,
+-		const Message &message) {
+-	if (message.role == Role::Tool) {
+-		auto text = message.toolTitle.isEmpty()
+-			? Tr(u"Used a tool"_q)
+-			: message.toolTitle;
+-		if (message.isError) {
+-			text += u": "_q + message.text.left(200);
+-		}
+-		content->add(
+-			object_ptr<Ui::FlatLabel>(
+-				content,
+-				text,
+-				st::settingsExperimentalAbout),
+-			RowMargins(0, st::lineWidth * 6));
+-		return;
+-	} else if (message.text.isEmpty()) {
+-		return;
+-	}
+-	const auto label = content->add(
+-		object_ptr<Ui::FlatLabel>(content, st::boxLabel),
+-		RowMargins(st::lineWidth * 4, st::lineWidth * 10));
+-	label->setMarkedText((message.role == Role::User)
+-		? Authored(Tr(u"You"_q), TextWithEntities::Simple(message.text))
+-		: Authored(Tr(u"Agent"_q), Markdown(message.text)));
+-	label->setSelectable(true);
+-}
+-
+-void SetupConfirm(not_null<Main::Session*> session) {
+-	Runner::For(session).setConfirm([=](
+-			Confirmation confirmation,
+-			Fn<void(bool)> decided) {
+-		const auto i = Panels().find(session);
+-		if (i == end(Panels())) {
+-			decided(false);
+-			return;
+-		}
+-		const auto pending = std::make_shared<Fn<void(bool)>>(decided);
+-		i->second.pending = pending;
+-		const auto decide = [=](bool approved) {
+-			if (const auto callback = base::take(*pending)) {
+-				callback(approved);
+-			}
+-		};
+-		auto box = Ui::MakeConfirmBox({
+-			.text = TextWithEntities::Simple(confirmation.text),
+-			.confirmed = [=](Fn<void()> close) {
+-				decide(true);
+-				close();
+-			},
+-			.cancelled = [=](Fn<void()> close) {
+-				decide(false);
+-				close();
+-			},
+-			.confirmText = confirmation.confirm,
+-			.title = confirmation.title,
+-		});
+-		box->boxClosing() | rpl::on_next([=] {
+-			decide(false);
+-		}, box->lifetime());
+-		i->second.panel->showBox(
+-			std::move(box),
+-			Ui::LayerOption::KeepOther,
+-			anim::type::normal);
+-	});
+-}
+-
+-[[nodiscard]] base::unique_qptr<Ui::RpWidget> MakeChat(
+-		not_null<QWidget*> parent,
+-		not_null<Main::Session*> session) {
+-	auto result = base::make_unique_q<Ui::RpWidget>(parent);
+-	const auto raw = result.get();
+-	const auto scroll = Ui::CreateChild<Ui::ScrollArea>(raw, st::boxScroll);
+-	const auto content = scroll->setOwnedWidget(
+-		object_ptr<Ui::VerticalLayout>(scroll));
+-	const auto shadow = Ui::CreateChild<Ui::PlainShadow>(raw);
+-	const auto bar = Ui::CreateChild<Ui::RpWidget>(raw);
+-	const auto barLabel = Ui::CreateChild<Ui::FlatLabel>(
+-		bar,
+-		QString(),
+-		st::boxLabel);
+-	const auto barStop = Ui::CreateChild<Ui::RoundButton>(
+-		bar,
+-		rpl::single(Tr(u"Stop"_q)),
+-		st::defaultLightButton);
+-	barStop->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
+-	const auto barShadow = Ui::CreateChild<Ui::PlainShadow>(raw);
+-	bar->hide();
+-	barShadow->hide();
+-	const auto bottom = Ui::CreateChild<Ui::RpWidget>(raw);
+-	const auto status = Ui::CreateChild<Ui::FlatLabel>(
+-		bottom,
+-		QString(),
+-		st::settingsExperimentalAbout);
+-	const auto field = Ui::CreateChild<Ui::InputField>(
+-		bottom,
+-		st::defaultInputField,
+-		Ui::InputField::Mode::MultiLine,
+-		rpl::single(Tr(u"Ask the agent…"_q)),
+-		QString());
+-	field->setSubmitSettings(Ui::InputField::SubmitSettings::Enter);
+-	field->setMaxHeight(style::ConvertScale(160));
+-	const auto send = Ui::CreateChild<Ui::RoundButton>(
+-		bottom,
+-		rpl::single(Tr(u"Send"_q)),
+-		st::defaultActiveButton);
+-	const auto stop = Ui::CreateChild<Ui::RoundButton>(
+-		bottom,
+-		rpl::single(Tr(u"Stop"_q)),
+-		st::defaultLightButton);
+-	send->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
+-	stop->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
+-
+-	struct State {
+-		int shown = -1;
+-		QString error;
+-		bool running = false;
+-		QString status;
+-		Ui::FlatLabel *live = nullptr;
+-	};
+-	const auto state = raw->lifetime().make_state<State>();
+-
+-	const auto layoutBottom = [=] {
+-		const auto width = bottom->width();
+-		const auto &padding = st::boxRowPadding;
+-		const auto skip = st::boxRowPadding.left() / 2;
+-		const auto button = send->isHidden() ? stop : send;
+-		const auto statusHeight = state->status.isEmpty()
+-			? 0
+-			: (status->height() + skip);
+-		const auto fieldWidth = std::max(
+-			width - padding.left() - padding.right() - button->width() - skip,
+-			1);
+-		status->resizeToWidth(std::max(
+-			width - padding.left() - padding.right(),
+-			1));
+-		status->moveToLeft(padding.left(), skip);
+-		field->resizeToWidth(fieldWidth);
+-		field->moveToLeft(padding.left(), skip + statusHeight);
+-		const auto height = skip * 2 + statusHeight + std::max(
+-			field->height(),
+-			button->height());
+-		send->moveToRight(padding.right(), height - skip - send->height());
+-		stop->moveToRight(padding.right(), height - skip - stop->height());
+-		if (bottom->height() != height) {
+-			bottom->resize(width, height);
+-		}
+-	};
+-	const auto layout = [=] {
+-		const auto size = raw->size();
+-		bottom->resizeToWidth(size.width());
+-		layoutBottom();
+-		const auto bottomTop = size.height() - bottom->height();
+-		bottom->moveToLeft(0, bottomTop);
+-		shadow->setGeometry(0, bottomTop - st::lineWidth, size.width(), st::lineWidth);
+-		auto top = 0;
+-		if (!bar->isHidden()) {
+-			const auto &padding = st::boxRowPadding;
+-			const auto skip = padding.left() / 2;
+-			barLabel->resizeToWidth(std::max(
+-				size.width()
+-					- padding.left()
+-					- padding.right()
+-					- barStop->width()
+-					- skip,
+-				1));
+-			const auto height = skip * 2
+-				+ std::max(barLabel->height(), barStop->height());
+-			bar->setGeometry(0, 0, size.width(), height);
+-			barLabel->moveToLeft(
+-				padding.left(),
+-				(height - barLabel->height()) / 2);
+-			barStop->moveToRight(
+-				padding.right(),
+-				(height - barStop->height()) / 2);
+-			barShadow->setGeometry(0, height, size.width(), st::lineWidth);
+-			top = height + st::lineWidth;
+-		}
+-		scroll->setGeometry(
+-			0,
+-			top,
+-			size.width(),
+-			std::max(bottomTop - st::lineWidth - top, 0));
+-		content->resizeToWidth(size.width());
+-	};
+-	const auto scrollDown = [=] {
+-		crl::on_main(scroll, [=] {
+-			scroll->scrollToY(scroll->scrollTopMax());
+-		});
+-	};
+-	const auto rebuild = [=] {
+-		const auto &runner = Runner::For(session);
+-		content->clear();
+-		if (runner.messages().empty()) {
+-			content->add(
+-				object_ptr<Ui::FlatLabel>(
+-					content,
+-					Tr(u"Ask about your chats, ask to retell a conversation, "
+-						"reply to someone or set a reminder. The agent uses "
+-						"your own API key from the settings."_q),
+-					st::settingsExperimentalAbout),
+-				RowMargins(st::boxRowPadding.left(), st::lineWidth * 10));
+-		}
+-		for (const auto &message : runner.messages()) {
+-			AddMessage(content, message);
+-		}
+-		state->live = content->add(
+-			object_ptr<Ui::FlatLabel>(content, st::boxLabel),
+-			RowMargins(st::lineWidth * 4, st::lineWidth * 4));
+-		state->live->setSelectable(true);
+-		if (!runner.lastError().isEmpty()) {
+-			const auto error = content->add(
+-				object_ptr<Ui::FlatLabel>(
+-					content,
+-					runner.lastError(),
+-					st::boxLabel),
+-				RowMargins(st::lineWidth * 4, st::lineWidth * 4));
+-			error->setTextColorOverride(st::boxTextFgError->c);
+-			if (runner.canRetry()) {
+-				const auto retry = content->add(
+-					object_ptr<Ui::SettingsButton>(
+-						content,
+-						rpl::single(Tr(u"Try again"_q)),
+-						st::settingsButtonNoIcon));
+-				retry->setClickedCallback([=] {
+-					Runner::For(session).retry();
+-				});
+-			}
+-		}
+-		state->shown = int(runner.messages().size());
+-		state->error = runner.lastError();
+-		content->resizeToWidth(scroll->width());
+-	};
+-	const auto refresh = [=] {
+-		const auto &runner = Runner::For(session);
+-		if (state->shown != int(runner.messages().size())
+-			|| state->error != runner.lastError()) {
+-			rebuild();
+-		}
+-		const auto streaming = runner.streaming();
+-		state->live->setMarkedText(streaming.isEmpty()
+-			? TextWithEntities()
+-			: Authored(
+-				Tr(u"Agent"_q),
+-				TextWithEntities::Simple(streaming)));
+-		state->status = runner.status();
+-		status->setText(state->status);
+-		send->setVisible(!runner.running());
+-		stop->setVisible(runner.running());
+-		state->running = runner.running();
+-		content->resizeToWidth(scroll->width());
+-		layout();
+-		scrollDown();
+-	};
+-	const auto submit = [=] {
+-		auto &runner = Runner::For(session);
+-		const auto text = field->getLastText().trimmed();
+-		if (text.isEmpty() || runner.running()) {
+-			return;
+-		}
+-		field->clear();
+-		runner.send(text);
+-	};
+-	field->submits() | rpl::on_next(submit, field->lifetime());
+-	send->setClickedCallback(submit);
+-	stop->setClickedCallback([=] {
+-		Runner::For(session).stop();
+-	});
+-	field->heightChanges() | rpl::on_next([=] {
+-		layout();
+-	}, field->lifetime());
+-	raw->sizeValue() | rpl::on_next([=] {
+-		layout();
+-	}, raw->lifetime());
+-	Runner::For(session).updates(
+-	) | rpl::on_next(refresh, raw->lifetime());
+-	refresh();
+-	const auto updateBar = [=] {
+-		auto active = std::vector<AutoReply>();
+-		for (const auto &entry : AutoReplies(session)) {
+-			if (entry.enabled) {
+-				active.push_back(entry);
+-			}
+-		}
+-		const auto shown = !active.empty();
+-		if (shown) {
+-			barLabel->setText((active.size() == 1)
+-				? Tr(u"Auto-reply: %1"_q).arg(active.front().title)
+-				: TrCount(
+-					int(active.size()),
+-					u"Auto-reply in %1 chat"_q,
+-					u"Auto-reply is on in %1 chats"_q));
+-			barStop->setText(rpl::single((active.size() == 1)
+-				? Tr(u"Stop"_q)
+-				: Tr(u"Stop all"_q)));
+-		}
+-		bar->setVisible(shown);
+-		barShadow->setVisible(shown);
+-		layout();
+-	};
+-	barStop->setClickedCallback([=] {
+-		StopAutoReplies(session);
+-	});
+-	AutoRepliesChanges(
+-		session
+-	) | rpl::on_next(updateBar, raw->lifetime());
+-	updateBar();
+-	crl::on_main(field, [=] {
+-		field->setFocusFast();
+-	});
+-	return result;
++void ShowAgent(not_null<Window::SessionController*> controller) {
++	controller->window().hideSettingsAndLayer(anim::type::instant);
++	ShowAgentSection(controller);
+ }
+ 
+-} // namespace
+-
+-void ShowAgent(not_null<Window::SessionController*> controller) {
+-	const auto session = &controller->session();
+-	auto &panels = Panels();
+-	if (const auto i = panels.find(session); i != end(panels)) {
+-		const auto panel = i->second.panel.get();
+-		const auto state = panel->windowState();
+-		if (state & Qt::WindowMinimized) {
+-			panel->setWindowState(state & ~Qt::WindowMinimized);
+-		}
+-		panel->showAndActivate();
+-		return;
+-	}
+-	auto owned = std::make_unique<Ui::SeparatePanel>();
+-	const auto panel = owned.get();
+-	panel->setWindowFlag(Qt::WindowStaysOnTopHint, false);
+-	panel->setInnerSize(
+-		QSize(style::ConvertScale(420), style::ConvertScale(560)),
+-		true);
+-	panel->setTitle(rpl::single(Tr(u"AI agent"_q)));
+-	panels.emplace(session, Opened{ .panel = std::move(owned) });
+-	session->lifetime().add([=] {
+-		Panels().remove(session);
+-	});
+-	SetupConfirm(session);
+-	panel->closeRequests(
+-	) | rpl::on_next([=] {
+-		panel->hideGetDuration();
+-	}, panel->lifetime());
+-	panel->closeEvents(
+-	) | rpl::on_next([=] {
+-		crl::on_main([=] {
+-			const auto i = Panels().find(session);
+-			if (i == end(Panels())) {
+-				return;
+-			}
+-			if (const auto pending = i->second.pending) {
+-				if (const auto callback = base::take(*pending)) {
+-					callback(false);
+-				}
+-			}
+-			Runner::For(session).setConfirm(nullptr);
+-			Panels().remove(session);
+-		});
+-	}, panel->lifetime());
+-	panel->setMenuAllowed([=](const Ui::Menu::MenuCallback &add) {
+-		add(Tr(u"Clear the conversation"_q), [=] {
+-			Runner::For(session).clear();
+-		}, &st::menuIconClear);
+-		add(Tr(u"Agent settings"_q), [=] {
+-			Core::App().openLocalUrl(
+-				LocalMadLink(u"mad://settings/agent"_q),
+-				QVariant());
+-		}, &st::menuIconSettings);
+-	});
+-	panel->showInner(MakeChat(panel, session));
+-	panel->showAndActivate();
++void ShowAgentSettings(not_null<Window::SessionController*> controller) {
++	Core::App().openLocalUrl(
++		LocalMadLink(u"mad://settings/agent"_q),
++		QVariant());
+ }
+ 
+ void AddAgentMenuEntry(
+@@ -595,7 +163,7 @@ rpl::producer<QString> KeyStatusValue(
+ 	)) | rpl::map([=] {
+ 		return Runner::For(session).key(CurrentProvider()).isEmpty()
+ 			? Tr(u"not set"_q)
+-			: Tr(u"saved"_q);
++			: QString(10, QChar(0x2022));
+ 	});
+ }
+ 
+diff --git a/Telegram/SourceFiles/tele/agent/agent_panel.h b/Telegram/SourceFiles/tele/agent/agent_panel.h
+index 43daf093581025d2ca12f40acbb86442910c0106..ef9c5e897dae11e826095aa3ccf2f00433a594cc 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_panel.h
++++ b/Telegram/SourceFiles/tele/agent/agent_panel.h
+@@ -11,6 +11,7 @@ class SessionController;
+ namespace Tele::Agent {
+ 
+ void ShowAgent(not_null<Window::SessionController*> controller);
++void ShowAgentSettings(not_null<Window::SessionController*> controller);
+ void AddAgentMenuEntry(
+ 	not_null<Ui::VerticalLayout*> menu,
+ 	not_null<Window::SessionController*> controller);
+diff --git a/Telegram/SourceFiles/tele/agent/agent_protocol.cpp b/Telegram/SourceFiles/tele/agent/agent_protocol.cpp
+index 3fd7bfe2918e34919f7596d14aad259ece1fb29f..ccffc2e4ec06305638df2e13cad08564b52d7f35 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_protocol.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_protocol.cpp
+@@ -258,7 +258,7 @@ QJsonObject AnthropicBody(
+ 			for (const auto &image : message.images) {
+ 				content.append(AnthropicImage(image));
+ 			}
+-			if (!message.text.isEmpty()) {
++			if (!message.requestText().isEmpty()) {
+ 				content.append(QJsonObject{
+ 					{ u"type"_s, u"text"_s },
+ 					{ u"text"_s, message.requestText() },
+diff --git a/Telegram/SourceFiles/tele/agent/agent_runner.cpp b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
+index 1bbe28c0f55fed2d5ca57677e55a0188abaa8dec..86388971c168f3968f8180194b3d02a19f3de4c8 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_runner.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
+@@ -117,13 +117,18 @@ Runner &Runner::For(not_null<Main::Session*> session) {
+ }
+ 
+ void Runner::send(const QString &text) {
++	send(text, {});
++}
++
++void Runner::send(const QString &text, std::vector<Image> images) {
+ 	const auto trimmed = text.trimmed();
+-	if (trimmed.isEmpty() || _running) {
++	if ((trimmed.isEmpty() && images.empty()) || _running) {
+ 		return;
+ 	}
+ 	_lastError = QString();
+ 	auto message = MakeMessage(Role::User, trimmed);
+ 	message.contextPrefix = TimeContext();
++	message.images = std::move(images);
+ 	_messages.push_back(std::move(message));
+ 	persist();
+ 	_iterations = 0;
+diff --git a/Telegram/SourceFiles/tele/agent/agent_runner.h b/Telegram/SourceFiles/tele/agent/agent_runner.h
+index 223fd1c6ca766d73600bb5b14e1d2541acb3906e..ffb0779432017e5446eef56f3b104391f86d4296 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_runner.h
++++ b/Telegram/SourceFiles/tele/agent/agent_runner.h
+@@ -31,6 +31,7 @@ public:
+ 	[[nodiscard]] static Runner &For(not_null<Main::Session*> session);
+ 
+ 	void send(const QString &text);
++	void send(const QString &text, std::vector<Image> images);
+ 	void stop();
+ 	void clear();
+ 	void retry();
+diff --git a/Telegram/SourceFiles/tele/agent/agent_section.cpp b/Telegram/SourceFiles/tele/agent/agent_section.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..8c22107dae53c4e5860eecb4f9aa473165dd16e8
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/agent/agent_section.cpp
+@@ -0,0 +1,338 @@
++#include "tele/agent/agent_section.h"
++
++#include "base/unique_qptr.h"
++#include "dialogs/dialogs_key.h"
++#include "main/main_session.h"
++#include "tele/agent/agent_chat.h"
++#include "tele/agent/agent_panel.h"
++#include "tele/agent/agent_runner.h"
++#include "tele/tele_card_widgets.h"
++#include "tele/tele_lowercase.h"
++#include "ui/boxes/confirm_box.h"
++#include "ui/painter.h"
++#include "ui/ui_utility.h"
++#include "ui/widgets/buttons.h"
++#include "ui/widgets/popup_menu.h"
++#include "ui/widgets/shadow.h"
++#include "window/section_memento.h"
++#include "window/section_widget.h"
++#include "window/window_adaptive.h"
++#include "window/window_session_controller.h"
++#include "styles/style_basic.h"
++#include "styles/style_dialogs.h"
++#include "styles/style_info.h"
++#include "styles/style_layers.h"
++#include "styles/style_menu_icons.h"
++#include "styles/style_widgets.h"
++
++#include <QtGui/QCursor>
++
++#include <map>
++
++namespace Tele::Agent {
++namespace {
++
++[[nodiscard]] std::map<
++		not_null<Window::SessionController*>,
++		rpl::variable<int>> &Shown() {
++	static auto result = std::map<
++		not_null<Window::SessionController*>,
++		rpl::variable<int>>();
++	return result;
++}
++
++[[nodiscard]] rpl::variable<int> &ShownFor(
++		not_null<Window::SessionController*> controller) {
++	auto &map = Shown();
++	auto i = map.find(controller);
++	if (i == end(map)) {
++		i = map.emplace(controller, 0).first;
++		controller->lifetime().add([=] {
++			Shown().erase(controller);
++		});
++	}
++	return i->second;
++}
++
++class Memento final : public Window::SectionMemento {
++public:
++	object_ptr<Window::SectionWidget> createWidget(
++		QWidget *parent,
++		not_null<Window::SessionController*> controller,
++		Window::Column column,
++		const QRect &geometry) override;
++
++};
++
++class TopBar final : public Ui::RpWidget {
++public:
++	TopBar(QWidget *parent, not_null<Window::SessionController*> controller);
++
++protected:
++	int resizeGetHeight(int newWidth) override;
++	void paintEvent(QPaintEvent *e) override;
++
++private:
++	void layout(int width);
++	void showMenu();
++
++	const not_null<Window::SessionController*> _controller;
++	object_ptr<Ui::IconButton> _back;
++	object_ptr<PaintedButton> _settings;
++	object_ptr<Ui::IconButton> _menu;
++	base::unique_qptr<Ui::PopupMenu> _popup;
++
++};
++
++TopBar::TopBar(
++	QWidget *parent,
++	not_null<Window::SessionController*> controller)
++: RpWidget(parent)
++, _controller(controller)
++, _back(this, st::historyTopBarBack)
++, _settings(this, [](QPainter &p, QRect rect, bool over) {
++	st::menuIconSettings.paintInCenter(
++		p,
++		rect,
++		over ? st::menuIconFgOver->c : st::menuIconFg->c);
++})
++, _menu(this, st::infoTopBarMenu) {
++	_back->setClickedCallback([=] {
++		controller->showBackFromStack();
++	});
++	_settings->resize(CardScaled(44), st::topBarHeight);
++	_settings->setClickedCallback([=] {
++		ShowAgentSettings(controller);
++	});
++	_menu->setClickedCallback([=] {
++		showMenu();
++	});
++	controller->adaptive().value() | rpl::on_next([=] {
++		_back->setVisible(controller->adaptive().isOneColumn());
++		layout(width());
++		update();
++	}, lifetime());
++	widthValue() | rpl::on_next([=](int width) {
++		layout(width);
++	}, lifetime());
++}
++
++int TopBar::resizeGetHeight(int newWidth) {
++	return st::topBarHeight;
++}
++
++void TopBar::layout(int width) {
++	_back->moveToLeft(0, 0, width);
++	_menu->moveToRight(0, (st::topBarHeight - _menu->height()) / 2, width);
++	_settings->moveToRight(
++		_menu->width(),
++		(st::topBarHeight - _settings->height()) / 2,
++		width);
++}
++
++void TopBar::paintEvent(QPaintEvent *e) {
++	auto p = QPainter(this);
++	p.fillRect(e->rect(), st::topBarBg);
++	const auto left = _back->isHidden()
++		? CardScaled(20)
++		: _back->width();
++	const auto icon = CardScaled(22);
++	PaintSparkles(
++		p,
++		QRectF(left, (height() - icon) / 2., icon, icon),
++		st::windowActiveTextFg->c);
++	const auto font = CardFont(15, true);
++	const auto textLeft = left + icon + CardScaled(10);
++	const auto available = std::max(
++		width() - textLeft - _menu->width() - _settings->width(),
++		0);
++	p.setFont(font);
++	p.setPen(st::dialogsNameFg);
++	p.drawText(
++		textLeft,
++		(height() - font->height) / 2 + font->ascent,
++		font->elided(Tr(u"AI agent"_q), available));
++}
++
++void TopBar::showMenu() {
++	const auto controller = _controller;
++	_popup = base::make_unique_q<Ui::PopupMenu>(
++		this,
++		st::popupMenuWithIcons);
++	_popup->addAction(Tr(u"Clear the conversation"_q), [=] {
++		controller->show(Ui::MakeConfirmBox({
++			.text = Tr(u"Clear the conversation with the agent?"_q),
++			.confirmed = [=](Fn<void()> close) {
++				Runner::For(&controller->session()).clear();
++				close();
++			},
++			.confirmText = Tr(u"Clear"_q),
++			.confirmStyle = &st::attentionBoxButton,
++		}));
++	}, &st::menuIconClear);
++	_popup->addAction(Tr(u"Agent settings"_q), [=] {
++		ShowAgentSettings(controller);
++	}, &st::menuIconSettings);
++	_popup->popup(QCursor::pos());
++}
++
++class Section final : public Window::SectionWidget {
++public:
++	Section(QWidget *parent, not_null<Window::SessionController*> controller);
++	~Section();
++
++	bool hasTopBarShadow() const override {
++		return true;
++	}
++	QPixmap grabForShowAnimation(
++		const Window::SectionSlideParams &params) override;
++	bool showInternal(
++		not_null<Window::SectionMemento*> memento,
++		const Window::SectionShow &params) override;
++	std::shared_ptr<Window::SectionMemento> createMemento() override;
++	bool floatPlayerHandleWheelEvent(QEvent *e) override;
++	QRect floatPlayerAvailableRect() override;
++
++protected:
++	void resizeEvent(QResizeEvent *e) override;
++	void paintEvent(QPaintEvent *e) override;
++	void showAnimatedHook(const Window::SectionSlideParams &params) override;
++	void doSetInnerFocus() override;
++
++private:
++	void updateAdaptiveLayout();
++
++	object_ptr<TopBar> _topBar;
++	object_ptr<Ui::PlainShadow> _topBarShadow;
++	object_ptr<ChatView> _chat;
++
++};
++
++Section::Section(
++	QWidget *parent,
++	not_null<Window::SessionController*> controller)
++: Window::SectionWidget(parent, controller)
++, _topBar(this, controller)
++, _topBarShadow(this)
++, _chat(this, controller) {
++	auto &shown = ShownFor(controller);
++	shown = shown.current() + 1;
++	_topBar->move(0, 0);
++	_topBar->resizeToWidth(width());
++	_topBar->show();
++	_topBarShadow->raise();
++	controller->adaptive().value() | rpl::on_next([=] {
++		updateAdaptiveLayout();
++	}, lifetime());
++	crl::on_main(this, [=] {
++		controller->setActiveChatEntry(Dialogs::Key());
++	});
++}
++
++Section::~Section() {
++	auto &map = Shown();
++	const auto i = map.find(controller());
++	if (i != end(map)) {
++		i->second = std::max(i->second.current() - 1, 0);
++	}
++}
++
++void Section::updateAdaptiveLayout() {
++	_topBarShadow->moveToLeft(
++		controller()->adaptive().isOneColumn() ? 0 : st::lineWidth,
++		_topBar->height());
++}
++
++QPixmap Section::grabForShowAnimation(
++		const Window::SectionSlideParams &params) {
++	if (params.withTopBarShadow) {
++		_topBarShadow->hide();
++	}
++	auto result = Ui::GrabWidget(this);
++	if (params.withTopBarShadow) {
++		_topBarShadow->show();
++	}
++	return result;
++}
++
++bool Section::showInternal(
++		not_null<Window::SectionMemento*> memento,
++		const Window::SectionShow &params) {
++	return (dynamic_cast<Memento*>(memento.get()) != nullptr);
++}
++
++std::shared_ptr<Window::SectionMemento> Section::createMemento() {
++	return std::make_shared<Memento>();
++}
++
++bool Section::floatPlayerHandleWheelEvent(QEvent *e) {
++	return false;
++}
++
++QRect Section::floatPlayerAvailableRect() {
++	return mapToGlobal(_chat->geometry());
++}
++
++void Section::resizeEvent(QResizeEvent *e) {
++	if (!width() || !height()) {
++		return;
++	}
++	_topBar->resizeToWidth(width());
++	_topBarShadow->resize(width(), st::lineWidth);
++	updateAdaptiveLayout();
++	const auto top = _topBar->height();
++	_chat->setGeometry(0, top, width(), std::max(height() - top, 0));
++}
++
++void Section::paintEvent(QPaintEvent *e) {
++	if (animatingShow()) {
++		SectionWidget::paintEvent(e);
++		return;
++	} else if (controller()->contentOverlapped(this, e)) {
++		return;
++	}
++	auto p = QPainter(this);
++	p.fillRect(e->rect(), st::windowBg);
++}
++
++void Section::showAnimatedHook(const Window::SectionSlideParams &params) {
++	if (params.withTopBarShadow) {
++		_topBarShadow->show();
++	}
++}
++
++void Section::doSetInnerFocus() {
++	_chat->setInnerFocus();
++}
++
++object_ptr<Window::SectionWidget> Memento::createWidget(
++		QWidget *parent,
++		not_null<Window::SessionController*> controller,
++		Window::Column column,
++		const QRect &geometry) {
++	if (column == Window::Column::Third) {
++		return nullptr;
++	}
++	auto result = object_ptr<Section>(parent, controller);
++	result->setGeometry(geometry);
++	return result;
++}
++
++} // namespace
++
++void ShowAgentSection(not_null<Window::SessionController*> controller) {
++	controller->showSection(
++		std::make_shared<Memento>(),
++		Window::SectionShow());
++}
++
++rpl::producer<bool> AgentSectionShownValue(
++		not_null<Window::SessionController*> controller) {
++	return ShownFor(
++		controller
++	).value() | rpl::map([](int count) {
++		return (count > 0);
++	}) | rpl::distinct_until_changed();
++}
++
++} // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_section.h b/Telegram/SourceFiles/tele/agent/agent_section.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..2cd37d4401b901a7cc4e4392e4f8d46b76460dec
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/agent/agent_section.h
+@@ -0,0 +1,13 @@
++#pragma once
++
++namespace Window {
++class SessionController;
++} // namespace Window
++
++namespace Tele::Agent {
++
++void ShowAgentSection(not_null<Window::SessionController*> controller);
++[[nodiscard]] rpl::producer<bool> AgentSectionShownValue(
++	not_null<Window::SessionController*> controller);
++
++} // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.cpp b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
+index a9e013b879004be3bfb31e1e23eb41965b841358..010e022a1b104e60111f9d297a6562e19a238459 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_tools.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
+@@ -493,6 +493,10 @@ void WithItem(
+ 
+ } // namespace
+ 
++Image PreparePhoto(QImage image) {
++	return EncodePhoto(std::move(image));
++}
++
+ std::vector<ToolSpec> ToolSpecs() {
+ 	auto result = std::vector<ToolSpec>();
+ 	const auto read = AllowReadChats();
+diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.h b/Telegram/SourceFiles/tele/agent/agent_tools.h
+index 54081d5c82fc1c64ba1c306efc3c0a2943d4aeb2..68a1b9b83c8750ca5afc1b0999d873c1ba1fba38 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_tools.h
++++ b/Telegram/SourceFiles/tele/agent/agent_tools.h
+@@ -34,6 +34,7 @@ using Confirm = Fn<void(Confirmation, Fn<void(bool)>)>;
+ [[nodiscard]] QString MediaTag(not_null<HistoryItem*> item);
+ [[nodiscard]] QString SystemPrompt(const QString &accountName);
+ [[nodiscard]] QString TimeContext();
++[[nodiscard]] Image PreparePhoto(QImage image);
+ 
+ class Tools final : public base::has_weak_ptr {
+ public:
+diff --git a/Telegram/SourceFiles/tele/tele_mad_link_parser.cpp b/Telegram/SourceFiles/tele/tele_mad_link_parser.cpp
+index 55703a421be16f2a54019e1f4f7347f789b243a8..e6c9624f5ebe19c908d132599277bb15dfb3a630 100644
+--- a/Telegram/SourceFiles/tele/tele_mad_link_parser.cpp
++++ b/Telegram/SourceFiles/tele/tele_mad_link_parser.cpp
+@@ -19,6 +19,7 @@ bool ValidControl(const QString &control) {
+ bool ValidCategory(const QString &category) {
+ 	static const auto categories = QStringList{
+ 		u""_s, u"badges"_s, u"accounts"_s, u"agent"_s, u"server"_s,
++		u"agent/general"_s, u"agent/permissions"_s, u"agent/auto-replies"_s,
+ 		u"backup"_s,
+ 		u"interface"_s, u"chats"_s, u"messages"_s, u"sending"_s,
+ 		u"notifications"_s, u"menus"_s, u"privacy"_s,
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index 382208b8b497190c88730338d0e4273fc50a428e..6be4bf2f089fd465875d3906d5796ccb65ddc0ec 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -27,6 +27,8 @@ const char kOptionAgentChatActions[] = "tele-agent-chat-actions";
+ const char kOptionAgentForward[] = "tele-agent-forward";
+ const char kOptionAgentAutoReplyWeb[] = "tele-agent-auto-reply-web";
+ const char kOptionAgentAutoReplyStatus[] = "tele-agent-auto-reply-status";
++const char kOptionAgentNavigation[] = "tele-agent-navigation";
++const char kOptionAgentNotifications[] = "tele-agent-notifications";
+ const char kOptionChatCompanion[] = "tele-chat-companion";
+ const char kOptionCompanionPlacement[] = "tele-companion-placement";
+ 
+@@ -803,7 +805,7 @@ base::options::option<QString> SpotifyClientIdOption({
+ base::options::toggle AgentMenuOption({
+ 	.id = kOptionAgentMenu,
+ 	.name = "AI agent in the side menu",
+-	.description = "Opens the agent window from the side menu.",
++	.description = "Opens the agent from the side menu.",
+ 	.defaultValue = true,
+ });
+ 
+@@ -895,6 +897,22 @@ base::options::toggle AgentAutoReplyStatusOption({
+ 		"reply.",
+ });
+ 
++base::options::option<QString> AgentNavigationOption({
++	.id = kOptionAgentNavigation,
++	.name = "Agent in navigation",
++	.description = "The tab sits next to the folders on the left; without "
++		"them the agent is a pinned chat in All chats.",
++	.defaultValue = QString(),
++});
++
++base::options::toggle AgentNotificationsOption({
++	.id = kOptionAgentNotifications,
++	.name = "Notifications from the agent",
++	.description = "Notes, urgent requests and stops from the "
++		"auto-responder come as notifications.",
++	.defaultValue = true,
++});
++
+ base::options::toggle ChatCompanionOption({
+ 	.id = kOptionChatCompanion,
+ 	.name = "Companion in private chats",
+@@ -2932,6 +2950,28 @@ rpl::producer<QString> AgentProviderValue() {
+ 	});
+ }
+ 
++QString AgentNavigation() {
++	return AgentNavigationOption.value();
++}
++
++void SetAgentNavigation(const QString &value) {
++	AgentNavigationOption.set(value);
++}
++
++rpl::producer<QString> AgentNavigationValue() {
++	return rpl::single(
++		rpl::empty
++	) | rpl::then(
++		AgentNavigationOption.changes()
++	) | rpl::map([] {
++		return AgentNavigationOption.value();
++	});
++}
++
++bool AgentNotifications() {
++	return AgentNotificationsOption.value();
++}
++
+ bool SmoothJumps() {
+ 	return SmoothJumpsOption.value()
+ 		&& !ReduceMotionOption.value()
+diff --git a/Telegram/SourceFiles/tele/tele_options.h b/Telegram/SourceFiles/tele/tele_options.h
+index 64daf42e086e431981fb14e914f6bfaa47339ae3..6395d6ddeebfff6c10b14ad7027e5989d5c19752 100644
+--- a/Telegram/SourceFiles/tele/tele_options.h
++++ b/Telegram/SourceFiles/tele/tele_options.h
+@@ -23,6 +23,8 @@ extern const char kOptionAgentChatActions[];
+ extern const char kOptionAgentForward[];
+ extern const char kOptionAgentAutoReplyWeb[];
+ extern const char kOptionAgentAutoReplyStatus[];
++extern const char kOptionAgentNavigation[];
++extern const char kOptionAgentNotifications[];
+ extern const char kOptionChatCompanion[];
+ extern const char kOptionCompanionPlacement[];
+ [[nodiscard]] bool MadBadgesEnabled();
+@@ -423,6 +425,10 @@ void SetSpotifyClientId(const QString &value);
+ [[nodiscard]] QString AgentProvider();
+ void SetAgentProvider(const QString &value);
+ [[nodiscard]] rpl::producer<QString> AgentProviderValue();
++[[nodiscard]] QString AgentNavigation();
++void SetAgentNavigation(const QString &value);
++[[nodiscard]] rpl::producer<QString> AgentNavigationValue();
++[[nodiscard]] bool AgentNotifications();
+ [[nodiscard]] rpl::producer<> ReduceMotionChanges();
+ [[nodiscard]] QString ReduceMotionSaved();
+ void SetReduceMotionSaved(const QString &value);
+diff --git a/Telegram/SourceFiles/tele/tele_settings_io.cpp b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+index 3f78961bf75144627c40afc8984aa7db43656261..544549981e1b3813390c28906009768d63e04785 100644
+--- a/Telegram/SourceFiles/tele/tele_settings_io.cpp
++++ b/Telegram/SourceFiles/tele/tele_settings_io.cpp
+@@ -308,6 +308,8 @@ struct Spec {
+ 		Toggle(kOptionAgentForward),
+ 		Toggle(kOptionAgentAutoReplyWeb),
+ 		Toggle(kOptionAgentAutoReplyStatus),
++		Toggle(kOptionAgentNotifications),
++		Choice(kOptionAgentNavigation, { QString(), u"chat"_q }),
+ 		Toggle(kOptionChatCompanion),
+ 		Internal(kOptionCompanionPlacement),
+ 		Toggle(kOptionHideForeignAgent),
+diff --git a/Telegram/SourceFiles/window/window_filters_menu.cpp b/Telegram/SourceFiles/window/window_filters_menu.cpp
+index fc0a18ba4fd38726fcb3ed6fc7b05deb8ca5bd02..f6549072b626f0794a2b9d93edca172c1e4b75f3 100644
+--- a/Telegram/SourceFiles/window/window_filters_menu.cpp
++++ b/Telegram/SourceFiles/window/window_filters_menu.cpp
+@@ -42,6 +42,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "boxes/premium_limits_box.h"
+ #include "settings/sections/settings_folders.h"
+ #include "storage/storage_media_prepare.h"
++#include "tele/agent/agent_navigation.h"
+ #include "tele/tele_compact_folders.h"
+ #include "tele/tele_folders.h"
+ #include "tele/tele_local_folders.h"
+@@ -457,6 +458,7 @@ void FiltersMenu::setupList() {
+ 		-1,
+ 		{ TextWithEntities{ tr::lng_filters_setup(tr::now) } },
+ 		Ui::FilterIcon::Edit);
++	Tele::Agent::SetupFiltersMenuButton(_container, _session);
+ 	_reorder = std::make_unique<Ui::VerticalLayoutReorder>(_list, &_scroll);
+ 
+ 	_reorder->updates(
