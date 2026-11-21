@@ -26,7 +26,7 @@ Subject: [PATCH] feat: clicking a mad badge shows its name and description in
  create mode 100644 Telegram/SourceFiles/tele/tele_mad_badge_tooltip.h
 
 diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
-index 2dcd58fe45db061f70cfc5d59975bba3814e83c3..4011d37d38a8cdc61836f181558eff83701f69a3 100644
+index 775c8d7292eba407d6daca261bc454aba926d3a8..5c712fd5e427bf87c2474fea74326a0421b9ce12 100644
 --- a/Telegram/CMakeLists.txt
 +++ b/Telegram/CMakeLists.txt
 @@ -2656,10 +2656,10 @@ PRIVATE

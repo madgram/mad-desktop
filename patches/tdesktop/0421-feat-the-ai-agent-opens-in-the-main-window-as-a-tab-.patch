@@ -5,42 +5,52 @@ Subject: [PATCH] feat: the ai agent opens in the main window as a tab or a
  pinned chat
 
 ---
- Telegram/CMakeLists.txt                       |    6 +
- Telegram/Resources/langs/mad_ru.json          |   36 +-
- .../SourceFiles/dialogs/dialogs_widget.cpp    |   12 +
+ Telegram/CMakeLists.txt                       |    8 +
+ Telegram/Resources/langs/mad_ru.json          |   38 +-
+ .../SourceFiles/dialogs/ui/dialogs_layout.cpp |   22 +-
+ Telegram/SourceFiles/main/main_session.cpp    |    2 +
  .../SourceFiles/settings/settings_tele.cpp    |  511 ++++++-
  .../tele/agent/agent_auto_reply.cpp           |    4 +
- .../SourceFiles/tele/agent/agent_chat.cpp     | 1194 +++++++++++++++++
- Telegram/SourceFiles/tele/agent/agent_chat.h  |   85 ++
- .../tele/agent/agent_navigation.cpp           |  418 ++++++
- .../SourceFiles/tele/agent/agent_navigation.h |   30 +
+ .../SourceFiles/tele/agent/agent_chat.cpp     | 1178 +++++++++++++++++
+ Telegram/SourceFiles/tele/agent/agent_chat.h  |   86 ++
+ .../tele/agent/agent_navigation.cpp           |  154 +++
+ .../SourceFiles/tele/agent/agent_navigation.h |   18 +
  .../SourceFiles/tele/agent/agent_panel.cpp    |  452 +------
  Telegram/SourceFiles/tele/agent/agent_panel.h |    1 +
+ .../SourceFiles/tele/agent/agent_peer.cpp     |  372 ++++++
+ Telegram/SourceFiles/tele/agent/agent_peer.h  |   57 +
  .../SourceFiles/tele/agent/agent_protocol.cpp |    2 +-
- .../SourceFiles/tele/agent/agent_runner.cpp   |    7 +-
- .../SourceFiles/tele/agent/agent_runner.h     |    1 +
- .../SourceFiles/tele/agent/agent_section.cpp  |  338 +++++
+ .../SourceFiles/tele/agent/agent_runner.cpp   |   13 +-
+ .../SourceFiles/tele/agent/agent_runner.h     |    3 +
+ .../SourceFiles/tele/agent/agent_section.cpp  |  351 +++++
  .../SourceFiles/tele/agent/agent_section.h    |   13 +
+ .../SourceFiles/tele/agent/agent_store.cpp    |   13 +
+ Telegram/SourceFiles/tele/agent/agent_store.h |    4 +
  .../SourceFiles/tele/agent/agent_tools.cpp    |    4 +
  Telegram/SourceFiles/tele/agent/agent_tools.h |    1 +
+ .../SourceFiles/tele/tele_changelog_chat.cpp  |   22 +-
+ Telegram/SourceFiles/tele/tele_local_pins.cpp |  100 +-
+ Telegram/SourceFiles/tele/tele_local_pins.h   |    4 +-
  .../SourceFiles/tele/tele_mad_link_parser.cpp |    1 +
  Telegram/SourceFiles/tele/tele_options.cpp    |   42 +-
  Telegram/SourceFiles/tele/tele_options.h      |    6 +
  .../SourceFiles/tele/tele_settings_io.cpp     |    2 +
  .../window/window_filters_menu.cpp            |    2 +
- 23 files changed, 2677 insertions(+), 491 deletions(-)
+ 31 files changed, 2962 insertions(+), 524 deletions(-)
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_chat.cpp
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_chat.h
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_navigation.cpp
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_navigation.h
+ create mode 100644 Telegram/SourceFiles/tele/agent/agent_peer.cpp
+ create mode 100644 Telegram/SourceFiles/tele/agent/agent_peer.h
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_section.cpp
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_section.h
 
 diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
-index 938041788b0c4aa0fce0820ca41277ea70972c55..2dcd58fe45db061f70cfc5d59975bba3814e83c3 100644
+index 938041788b0c4aa0fce0820ca41277ea70972c55..775c8d7292eba407d6daca261bc454aba926d3a8 100644
 --- a/Telegram/CMakeLists.txt
 +++ b/Telegram/CMakeLists.txt
-@@ -2691,6 +2691,12 @@ PRIVATE
+@@ -2691,8 +2691,16 @@ PRIVATE
      tele/tele_card_widgets.h
      tele/agent/agent_auto_reply.cpp
      tele/agent/agent_auto_reply.h
@@ -52,12 +62,16 @@ index 938041788b0c4aa0fce0820ca41277ea70972c55..2dcd58fe45db061f70cfc5d59975bba3
 +    tele/agent/agent_section.h
      tele/agent/agent_panel.cpp
      tele/agent/agent_panel.h
++    tele/agent/agent_peer.cpp
++    tele/agent/agent_peer.h
      tele/agent/agent_protocol.cpp
+     tele/agent/agent_protocol.h
+     tele/agent/agent_runner.cpp
 diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
-index 492fa726672fd47035fd2bf12644ad915b74418a..f6a8ed35987a7cdbcd9cba2cb7956a919a3aaa1e 100644
+index 492fa726672fd47035fd2bf12644ad915b74418a..3af185f0699c8d5f00d9434401bf4935f49673ec 100644
 --- a/Telegram/Resources/langs/mad_ru.json
 +++ b/Telegram/Resources/langs/mad_ru.json
-@@ -2426,5 +2426,39 @@
+@@ -2426,5 +2426,41 @@
    "Could not refresh the account.": "Не получилось обновить данные.",
    "Could not start the domain check.": "Не получилось начать проверку домена.",
    "Could not check the domain.": "Не получилось проверить домен.",
@@ -96,38 +110,72 @@ index 492fa726672fd47035fd2bf12644ad915b74418a..f6a8ed35987a7cdbcd9cba2cb7956a91
 +  "Attach photo": "Прикрепить фото",
 +  "Could not open the image.": "Не получилось открыть картинку.",
 +  "Anthropic": "Anthropic",
-+  "OpenAI": "OpenAI"
++  "OpenAI": "OpenAI",
++  "Typing…": "Печатает…",
++  "Works with your own API key": "Работает на твоём API-ключе"
  }
-diff --git a/Telegram/SourceFiles/dialogs/dialogs_widget.cpp b/Telegram/SourceFiles/dialogs/dialogs_widget.cpp
-index 3d65252b7deffc81179588479e36628dc7282e0e..e4fdec393f045718cfcb09e8d763f43d5ba7a8ab 100644
---- a/Telegram/SourceFiles/dialogs/dialogs_widget.cpp
-+++ b/Telegram/SourceFiles/dialogs/dialogs_widget.cpp
-@@ -92,6 +92,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
- #include "info/profile/info_profile_values.h"
- #include "info/info_memento.h"
- #include "inline_bots/bot_attach_web_view.h"
-+#include "tele/agent/agent_navigation.h"
- #include "tele/tele_calls.h"
- #include "tele/tele_chats_selection.h"
- #include "tele/tele_communities.h"
-@@ -497,6 +498,17 @@ Widget::Widget(
- 		.inner = _inner,
- 		.banners = (_layout == Layout::Main),
- 	});
-+	Tele::Agent::SetupDialogsTopRow({
-+		.controller = controller,
-+		.list = _innerList,
-+		.inner = _inner,
-+		.main = (_layout == Layout::Main),
-+		.filter = _chatsFilterForTopBarSuggestion.value(),
-+		.subsection = _openedFolderOrForum.value(),
-+		.searching = _searchStateForTopBarSuggestion.events_starting_with(
-+			!_searchState.query.isEmpty()),
-+		.searchInPeer = _jumpToDate->toggledValue(),
-+	});
- 	controller->activeChatsFilter(
- 	) | rpl::on_next([=](FilterId id) {
- 		switchToChatsFilter(id);
+diff --git a/Telegram/SourceFiles/dialogs/ui/dialogs_layout.cpp b/Telegram/SourceFiles/dialogs/ui/dialogs_layout.cpp
+index a0a1b955dff59461b047e457be241be55bd18508..bb5ab0f01c60f8bd455ad8723eaf3ae1bc0888be 100644
+--- a/Telegram/SourceFiles/dialogs/ui/dialogs_layout.cpp
++++ b/Telegram/SourceFiles/dialogs/ui/dialogs_layout.cpp
+@@ -36,6 +36,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "main/main_session.h"
+ #include "storage/localstorage.h"
+ #include "support/support_helper.h"
++#include "tele/agent/agent_peer.h"
+ #include "tele/scripting/tele_script_peers.h"
+ #include "tele/secret/secret_chats.h"
+ #include "tele/tele_corner_buttons.h"
+@@ -1328,16 +1329,21 @@ void RowPainter::Paint(
+ 			texttop,
+ 			availableWidth,
+ 			st::dialogsTextFont->height);
+-		const auto actionWasPainted = ShowSendActionInDialogs(thread)
+-			? thread->sendActionPainter()->paint(
++		const auto actionWasPainted = Tele::Agent::PaintAgentRowStatus(
+ 				p,
+-				rect.x(),
+-				rect.y(),
+-				rect.width(),
++				thread,
++				rect,
+ 				context.width,
+-				color,
+-				context.now)
+-			: false;
++				color->c)
++			|| (ShowSendActionInDialogs(thread)
++				&& thread->sendActionPainter()->paint(
++					p,
++					rect.x(),
++					rect.y(),
++					rect.width(),
++					context.width,
++					color,
++					context.now));
+ 		const auto scriptPreview = actionWasPainted
+ 			? QString()
+ 			: Tele::Scripting::ListPreview(peer);
+diff --git a/Telegram/SourceFiles/main/main_session.cpp b/Telegram/SourceFiles/main/main_session.cpp
+index 8bfa812c9114c715c1672e66b69206e46fcc41d0..91026e660db1392667b329f7764bed69c0fcc8b3 100644
+--- a/Telegram/SourceFiles/main/main_session.cpp
++++ b/Telegram/SourceFiles/main/main_session.cpp
+@@ -84,6 +84,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ #include "tele/tele_send_order.h"
+ #include "tele/tele_html_playground.h"
+ #include "tele/agent/agent_auto_reply.h"
++#include "tele/agent/agent_peer.h"
+ #include "styles/style_layers.h"
+ 
+ #ifndef TDESKTOP_DISABLE_SPELLCHECK
+@@ -319,6 +320,7 @@ Session::Session(
+ 	Tele::Html::SetupPlayground(this);
+ 	Tele::Scripting::SetupScripts(this);
+ 	Tele::Agent::SetupAutoReplies(this);
++	Tele::Agent::SetupAgentPeer(this);
+ }
+ 
+ void Session::appConfigRefreshed() {
 diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
 index a97d4a804646c3437e47af742dbb9cfa11e5400e..d2aa62561c87d97f899d2f9ba0de16be0b6f0178 100644
 --- a/Telegram/SourceFiles/settings/settings_tele.cpp
@@ -759,10 +807,10 @@ index 7ebb9a6b3486a9c3b38181e0a2ffce617bd31a33..e2a54f01c56cafeb504b199b74b65b8a
  		.user = job->user,
 diff --git a/Telegram/SourceFiles/tele/agent/agent_chat.cpp b/Telegram/SourceFiles/tele/agent/agent_chat.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..cd56eaa3f6834de3d16f93b43a562b4357045e3d
+index 0000000000000000000000000000000000000000..c90188ba0d1df28fb097d9c71eb84ba08a2d74f4
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/agent/agent_chat.cpp
-@@ -0,0 +1,1194 @@
+@@ -0,0 +1,1178 @@
 +#include "tele/agent/agent_chat.h"
 +
 +#include "core/file_utilities.h"
@@ -909,29 +957,6 @@ index 0000000000000000000000000000000000000000..cd56eaa3f6834de3d16f93b43a562b43
 +		return copy;
 +	}();
 +	return result;
-+}
-+
-+[[nodiscard]] QString RunningLabel(const QString &name) {
-+	if (name == u"web_search"_q) {
-+		return Tr(u"Searching the web…"_q);
-+	} else if (name == u"web_fetch"_q) {
-+		return Tr(u"Reading a page…"_q);
-+	} else if (name == u"read_chat"_q) {
-+		return Tr(u"Reading the chat…"_q);
-+	} else if (name == u"list_chats"_q || name == u"search_chats"_q) {
-+		return Tr(u"Looking through the chats…"_q);
-+	} else if (name == u"search_messages"_q) {
-+		return Tr(u"Searching messages…"_q);
-+	} else if (name == u"view_photo"_q) {
-+		return Tr(u"Looking at the photo…"_q);
-+	} else if (name == u"transcribe_voice"_q) {
-+		return Tr(u"Transcribing the voice message…"_q);
-+	} else if (name == u"draft_reply"_q) {
-+		return Tr(u"Writing a draft…"_q);
-+	} else if (name == u"forward_messages"_q) {
-+		return Tr(u"Forwarding…"_q);
-+	}
-+	return Tr(u"Working…"_q);
 +}
 +
 +void CopyMarkdown(const QString &markdown) {
@@ -1843,12 +1868,12 @@ index 0000000000000000000000000000000000000000..cd56eaa3f6834de3d16f93b43a562b43
 +				data.state = runner.running()
 +					? ChipState::Running
 +					: ChipState::Failed;
-+				data.title = RunningLabel(call.name);
++				data.title = ToolStatus(call.name);
 +			} else {
 +				data.state = j->isError ? ChipState::Failed : ChipState::Done;
 +				data.title = j->toolTitle.isEmpty()
 +					? (j->isError
-+						? RunningLabel(call.name)
++						? ToolStatus(call.name)
 +						: Tr(u"Used a tool"_q))
 +					: j->toolTitle;
 +				if (j->isError) {
@@ -1956,13 +1981,20 @@ index 0000000000000000000000000000000000000000..cd56eaa3f6834de3d16f93b43a562b43
 +	});
 +}
 +
++void ChatView::prepareForShow() {
++	if (width() > 0 && height() > 0) {
++		layout();
++		_scroll->scrollToY(_scroll->scrollTopMax());
++	}
++}
++
 +} // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_chat.h b/Telegram/SourceFiles/tele/agent/agent_chat.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..742a53b4a3e23f33b5ecb7524aba0ecb6f3c1eb6
+index 0000000000000000000000000000000000000000..657189fa0ec2b55aa8c291e1e7041a8f2997a33d
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/agent/agent_chat.h
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,86 @@
 +#pragma once
 +
 +#include "base/object_ptr.h"
@@ -1999,6 +2031,7 @@ index 0000000000000000000000000000000000000000..742a53b4a3e23f33b5ecb7524aba0ecb
 +	~ChatView();
 +
 +	void setInnerFocus();
++	void prepareForShow();
 +
 +protected:
 +	void resizeEvent(QResizeEvent *e) override;
@@ -2050,65 +2083,37 @@ index 0000000000000000000000000000000000000000..742a53b4a3e23f33b5ecb7524aba0ecb
 +} // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_navigation.cpp b/Telegram/SourceFiles/tele/agent/agent_navigation.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..ff4e60e1e8463e7c0ecaa792e1163ea32cc7c65f
+index 0000000000000000000000000000000000000000..c985c8643c59cdee7da357a4a05d84bc3f266986
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/agent/agent_navigation.cpp
-@@ -0,0 +1,418 @@
+@@ -0,0 +1,154 @@
 +#include "tele/agent/agent_navigation.h"
 +
 +#include "base/unique_qptr.h"
-+#include "base/unixtime.h"
 +#include "core/application.h"
 +#include "core/core_settings.h"
-+#include "dialogs/dialogs_three_state_icon.h"
 +#include "main/main_session.h"
 +#include "tele/agent/agent_panel.h"
++#include "tele/agent/agent_peer.h"
 +#include "tele/agent/agent_runner.h"
 +#include "tele/agent/agent_section.h"
-+#include "tele/agent/agent_store.h"
 +#include "tele/tele_card_widgets.h"
 +#include "tele/tele_compact_folders.h"
 +#include "tele/tele_lowercase.h"
 +#include "tele/tele_options.h"
 +#include "ui/painter.h"
-+#include "ui/text/format_values.h"
 +#include "ui/widgets/buttons.h"
 +#include "ui/widgets/chat_filters_tabs_mode.h"
 +#include "ui/wrap/slide_wrap.h"
 +#include "ui/wrap/vertical_layout.h"
-+#include "window/window_separate_id.h"
 +#include "window/window_session_controller.h"
 +#include "styles/style_basic.h"
-+#include "styles/style_dialogs.h"
 +#include "styles/style_filter_icons.h"
 +#include "styles/style_widgets.h"
 +#include "styles/style_window.h"
 +
 +namespace Tele::Agent {
 +namespace {
-+
-+[[nodiscard]] rpl::producer<bool> ConfiguredValue(
-+		not_null<Main::Session*> session) {
-+	return rpl::single(
-+		rpl::empty
-+	) | rpl::then(rpl::merge(
-+		Runner::For(session).updates(),
-+		AgentProviderValue() | rpl::to_empty
-+	)) | rpl::map([=] {
-+		return !Runner::For(session).key(CurrentProvider()).isEmpty();
-+	}) | rpl::distinct_until_changed();
-+}
-+
-+[[nodiscard]] rpl::producer<bool> SidebarShownValue(
-+		not_null<Window::SessionController*> controller) {
-+	return rpl::single(
-+		rpl::empty
-+	) | rpl::then(
-+		controller->filtersMenuChanged()
-+	) | rpl::map([=] {
-+		return (controller->filtersWidth() > 0);
-+	}) | rpl::distinct_until_changed();
-+}
 +
 +[[nodiscard]] const style::SideBarButton &ButtonStyle(
 +		Ui::ChatsFiltersTabsMode mode) {
@@ -2121,19 +2126,6 @@ index 0000000000000000000000000000000000000000..ff4e60e1e8463e7c0ecaa792e1163ea3
 +	case Mode::Default: break;
 +	}
 +	return st::windowFiltersButton;
-+}
-+
-+[[nodiscard]] QString PlainPreview(QString text) {
-+	for (const auto &marker : {
-+			u"**"_q,
-+			u"__"_q,
-+			u"~~"_q,
-+			u"||"_q,
-+			u"`"_q,
-+		}) {
-+		text.remove(marker);
-+	}
-+	return text.simplified();
 +}
 +
 +class SideButton final : public Ui::RippleButton {
@@ -2210,179 +2202,6 @@ index 0000000000000000000000000000000000000000..ff4e60e1e8463e7c0ecaa792e1163ea3
 +	}
 +}
 +
-+class AgentChatRow final : public Ui::RippleButton {
-+public:
-+	AgentChatRow(
-+		QWidget *parent,
-+		not_null<Window::SessionController*> controller);
-+
-+protected:
-+	int resizeGetHeight(int newWidth) override;
-+	void paintEvent(QPaintEvent *e) override;
-+
-+private:
-+	void refreshPreview();
-+
-+	const not_null<Window::SessionController*> _controller;
-+	QString _preview;
-+	TimeId _date = 0;
-+	bool _active = false;
-+
-+};
-+
-+AgentChatRow::AgentChatRow(
-+	QWidget *parent,
-+	not_null<Window::SessionController*> controller)
-+: RippleButton(parent, st::dialogsRipple)
-+, _controller(controller) {
-+	setAccessibleName(Tr(u"AI agent"_q));
-+	const auto session = &controller->session();
-+	Runner::For(session).updates(
-+	) | rpl::on_next([=] {
-+		refreshPreview();
-+	}, lifetime());
-+	AgentSectionShownValue(
-+		controller
-+	) | rpl::on_next([=](bool shown) {
-+		_active = shown;
-+		update();
-+	}, lifetime());
-+	HideListPreviewsChanges() | rpl::on_next([=] {
-+		resizeToWidth(width());
-+		update();
-+	}, lifetime());
-+	refreshPreview();
-+}
-+
-+void AgentChatRow::refreshPreview() {
-+	const auto &messages = Runner::For(&_controller->session()).messages();
-+	auto preview = QString();
-+	auto date = TimeId(0);
-+	for (auto i = int(messages.size()); i != 0; --i) {
-+		const auto &message = messages[i - 1];
-+		if (message.role == Role::Tool || message.text.trimmed().isEmpty()) {
-+			continue;
-+		}
-+		preview = PlainPreview(message.text);
-+		date = TimeId(message.date);
-+		break;
-+	}
-+	if (preview.isEmpty()) {
-+		preview = Tr(u"Message the agent"_q);
-+	}
-+	if (_preview != preview || _date != date) {
-+		_preview = preview;
-+		_date = date;
-+		update();
-+	}
-+}
-+
-+int AgentChatRow::resizeGetHeight(int newWidth) {
-+	return HideListPreviews()
-+		? (2 * style::ConvertScale(6) + style::ConvertScale(28))
-+		: st::defaultDialogRow.height;
-+}
-+
-+void AgentChatRow::paintEvent(QPaintEvent *e) {
-+	auto p = Painter(this);
-+	const auto &row = st::defaultDialogRow;
-+	const auto width = this->width();
-+	const auto selected = isOver();
-+	const auto active = _active;
-+	p.fillRect(
-+		e->rect(),
-+		active
-+			? st::dialogsBgActive
-+			: selected
-+			? st::dialogsBgOver
-+			: st::dialogsBg);
-+	paintRipple(
-+		p,
-+		0,
-+		0,
-+		active ? &st::dialogsRippleBgActive->c : nullptr);
-+	const auto compact = HideListPreviews();
-+	const auto photo = compact ? style::ConvertScale(28) : row.photoSize;
-+	const auto top = compact ? style::ConvertScale(6) : row.padding.top();
-+	const auto left = row.padding.left();
-+	{
-+		auto hq = PainterHighQualityEnabler(p);
-+		p.setPen(Qt::NoPen);
-+		p.setBrush(active ? st::dialogsBg : st::activeButtonBg);
-+		p.drawEllipse(QRectF(left, top, photo, photo));
-+		const auto inset = photo * 0.26;
-+		PaintSparkles(
-+			p,
-+			QRectF(
-+				left + inset,
-+				top + inset,
-+				photo - 2 * inset,
-+				photo - 2 * inset),
-+			(active ? st::dialogsBgActive : st::activeButtonFg)->c);
-+	}
-+	if (width < st::columnMinimalWidthLeft / 2) {
-+		return;
-+	}
-+	const auto nameLeft = compact
-+		? (row.nameLeft - (row.photoSize - photo))
-+		: row.nameLeft;
-+	const auto nameTop = compact
-+		? (height() - st::semiboldFont->height) / 2
-+		: row.nameTop;
-+	auto nameWidth = width - nameLeft - row.padding.right();
-+	if (_date) {
-+		const auto text = Ui::FormatDialogsDate(
-+			base::unixtime::parse(_date));
-+		const auto textWidth = st::dialogsDateFont->width(text);
-+		nameWidth -= textWidth + st::dialogsDateSkip;
-+		p.setFont(st::dialogsDateFont);
-+		p.setPen(active
-+			? st::dialogsDateFgActive
-+			: selected
-+			? st::dialogsDateFgOver
-+			: st::dialogsDateFg);
-+		p.drawText(
-+			width - row.padding.right() - textWidth,
-+			nameTop + st::semiboldFont->height - st::normalFont->descent,
-+			text);
-+	}
-+	p.setFont(st::semiboldFont);
-+	p.setPen(active
-+		? st::dialogsNameFgActive
-+		: selected
-+		? st::dialogsNameFgOver
-+		: st::dialogsNameFg);
-+	p.drawTextLeft(
-+		nameLeft,
-+		nameTop,
-+		width,
-+		st::semiboldFont->elided(Tr(u"AI agent"_q), std::max(nameWidth, 0)));
-+	if (compact) {
-+		return;
-+	}
-+	const auto &icon = Dialogs::ThreeStateIcon(
-+		st::dialogsPinnedIcon,
-+		active,
-+		selected);
-+	icon.paint(p, width - row.padding.right() - icon.width(), row.textTop, width);
-+	const auto available = width
-+		- row.textLeft
-+		- row.padding.right()
-+		- icon.width()
-+		- st::dialogsUnreadPadding;
-+	p.setFont(st::dialogsTextFont);
-+	p.setPen(active
-+		? st::dialogsTextFgActive
-+		: selected
-+		? st::dialogsTextFgOver
-+		: st::dialogsTextFg);
-+	p.drawTextLeft(
-+		row.textLeft,
-+		row.textTop,
-+		width,
-+		st::dialogsTextFont->elided(_preview, std::max(available, 0)));
-+}
-+
 +} // namespace
 +
 +void SetupFiltersMenuButton(
@@ -2412,7 +2231,7 @@ index 0000000000000000000000000000000000000000..ff4e60e1e8463e7c0ecaa792e1163ea3
 +			button->setActive(shown);
 +		}, button->lifetime());
 +		wrap->toggleOn(rpl::combine(
-+			ConfiguredValue(session),
++			AgentConfiguredValue(session),
 +			AgentNavigationValue()
 +		) | rpl::map([](bool configured, const QString &navigation) {
 +			return configured && (navigation != u"chat"_q);
@@ -2421,63 +2240,13 @@ index 0000000000000000000000000000000000000000..ff4e60e1e8463e7c0ecaa792e1163ea3
 +	}, container->lifetime());
 +}
 +
-+void SetupDialogsTopRow(DialogsTopRowDescriptor &&descriptor) {
-+	const auto controller = descriptor.controller;
-+	if (!descriptor.main || !controller->windowId().primary()) {
-+		return;
-+	}
-+	const auto list = descriptor.list;
-+	const auto inner = descriptor.inner;
-+	auto index = list->count();
-+	for (auto i = 0; i != list->count(); ++i) {
-+		if (list->widgetAt(i).get() == inner.get()) {
-+			index = i;
-+			break;
-+		}
-+	}
-+	const auto wrap = list->insert(
-+		index,
-+		object_ptr<Ui::SlideWrap<AgentChatRow>>(
-+			list,
-+			object_ptr<AgentChatRow>(list, controller)));
-+	wrap->entity()->setClickedCallback([=] {
-+		ShowAgent(controller);
-+	});
-+	const auto session = &controller->session();
-+	auto placement = rpl::combine(
-+		ConfiguredValue(session),
-+		AgentNavigationValue(),
-+		SidebarShownValue(controller)
-+	) | rpl::map([](
-+			bool configured,
-+			const QString &navigation,
-+			bool sidebar) {
-+		return configured && ((navigation == u"chat"_q) || !sidebar);
-+	});
-+	auto main = rpl::combine(
-+		std::move(descriptor.filter),
-+		std::move(descriptor.subsection),
-+		std::move(descriptor.searching),
-+		std::move(descriptor.searchInPeer)
-+	) | rpl::map([](int32 filter, bool subsection, bool searching, bool peer) {
-+		return !filter && !subsection && !searching && !peer;
-+	});
-+	wrap->toggleOn(rpl::combine(
-+		std::move(placement),
-+		std::move(main)
-+	) | rpl::map([](bool placed, bool shown) {
-+		return placed && shown;
-+	}), anim::type::instant);
-+	wrap->finishAnimating();
-+}
-+
 +} // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_navigation.h b/Telegram/SourceFiles/tele/agent/agent_navigation.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..45f9ecade133428274345b9802dbec11b1825b32
+index 0000000000000000000000000000000000000000..c024b7bee7834571b5faf5ae0e677e4c99f65a56
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/agent/agent_navigation.h
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,18 @@
 +#pragma once
 +
 +namespace Ui {
@@ -2491,21 +2260,9 @@ index 0000000000000000000000000000000000000000..45f9ecade133428274345b9802dbec11
 +
 +namespace Tele::Agent {
 +
-+struct DialogsTopRowDescriptor {
-+	not_null<Window::SessionController*> controller;
-+	not_null<Ui::VerticalLayout*> list;
-+	not_null<Ui::RpWidget*> inner;
-+	bool main = false;
-+	rpl::producer<int32> filter;
-+	rpl::producer<bool> subsection;
-+	rpl::producer<bool> searching;
-+	rpl::producer<bool> searchInPeer;
-+};
-+
 +void SetupFiltersMenuButton(
 +	not_null<Ui::VerticalLayout*> container,
 +	not_null<Window::SessionController*> controller);
-+void SetupDialogsTopRow(DialogsTopRowDescriptor &&descriptor);
 +
 +} // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_panel.cpp b/Telegram/SourceFiles/tele/agent/agent_panel.cpp
@@ -3015,6 +2772,447 @@ index 43daf093581025d2ca12f40acbb86442910c0106..ef9c5e897dae11e826095aa3ccf2f004
  void AddAgentMenuEntry(
  	not_null<Ui::VerticalLayout*> menu,
  	not_null<Window::SessionController*> controller);
+diff --git a/Telegram/SourceFiles/tele/agent/agent_peer.cpp b/Telegram/SourceFiles/tele/agent/agent_peer.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..8e3daf59fbe2fb2233bbfac116765b497f328f97
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/agent/agent_peer.cpp
+@@ -0,0 +1,372 @@
++#include "tele/agent/agent_peer.h"
++
++#include "base/unixtime.h"
++#include "data/data_session.h"
++#include "data/data_thread.h"
++#include "data/data_user.h"
++#include "data/notify/data_peer_notify_settings.h"
++#include "dialogs/ui/dialogs_quick_action.h"
++#include "history/history.h"
++#include "history/history_item.h"
++#include "lang/lang_keys.h"
++#include "main/main_session.h"
++#include "tele/agent/agent_panel.h"
++#include "tele/agent/agent_runner.h"
++#include "tele/agent/agent_store.h"
++#include "tele/tele_card_widgets.h"
++#include "tele/tele_local_pins.h"
++#include "tele/tele_lowercase.h"
++#include "tele/tele_options.h"
++#include "ui/painter.h"
++#include "ui/widgets/menu/menu_add_action_callback.h"
++#include "window/window_session_controller.h"
++#include "styles/style_basic.h"
++#include "styles/style_dialogs.h"
++#include "styles/style_menu_icons.h"
++#include "styles/style_widgets.h"
++
++namespace Tele::Agent {
++namespace {
++
++constexpr auto kMaxUserId = BareId(0xFFFFFFFFFFFFULL);
++constexpr auto kUserId = UserId(kMaxUserId - (kMaxUserId % 1000) + 2);
++constexpr auto kUserpicSize = 320;
++constexpr auto kPreviewLimit = 300;
++
++struct State {
++	bool shown = false;
++	FullMsgId mirrored;
++	QString text;
++	TimeId date = 0;
++	TimeId placeholderDate = 0;
++	QString status;
++	bool running = false;
++};
++
++[[nodiscard]] base::flat_map<
++		not_null<Main::Session*>,
++		std::unique_ptr<State>> &States() {
++	static auto result = base::flat_map<
++		not_null<Main::Session*>,
++		std::unique_ptr<State>>();
++	return result;
++}
++
++[[nodiscard]] State *StateFor(not_null<Main::Session*> session) {
++	const auto &states = States();
++	const auto i = states.find(session);
++	return (i != end(states)) ? i->second.get() : nullptr;
++}
++
++[[nodiscard]] QString PlainPreview(QString text) {
++	for (const auto &marker : {
++			u"**"_q,
++			u"__"_q,
++			u"~~"_q,
++			u"||"_q,
++			u"`"_q,
++		}) {
++		text.remove(marker);
++	}
++	return text.simplified().left(kPreviewLimit);
++}
++
++[[nodiscard]] not_null<UserData*> EnsureUser(
++		not_null<Main::Session*> session) {
++	using Flag = MTPDuser::Flag;
++	const auto owner = &session->data();
++	const auto user = owner->processUser(MTP_user(
++		MTP_flags(Flag::f_first_name | Flag::f_photo),
++		MTP_long(kUserId.bare),
++		MTPlong(),
++		MTP_string(Tr(u"AI agent"_q)),
++		MTPstring(),
++		MTPstring(),
++		MTPstring(),
++		MTP_userProfilePhotoEmpty(),
++		MTPUserStatus(),
++		MTPint(),
++		MTPVector<MTPRestrictionReason>(),
++		MTPstring(),
++		MTPstring(),
++		MTPEmojiStatus(),
++		MTPVector<MTPUsername>(),
++		MTPRecentStory(),
++		MTPPeerColor(),
++		MTPPeerColor(),
++		MTPint(),
++		MTPlong(),
++		MTPlong(),
++		MTPlong()));
++	if (user->notify().settingsUnknown()) {
++		user->notify().resetToDefault();
++	}
++	return user;
++}
++
++[[nodiscard]] not_null<History*> EnsureHistory(not_null<UserData*> user) {
++	const auto history = user->owner().history(user);
++	if (!history->folderKnown()) {
++		history->applyDialogFields(nullptr, 0, 0, 0);
++		history->dialogEntryApplied();
++	}
++	return history;
++}
++
++struct Preview {
++	QString text;
++	TimeId date = 0;
++};
++
++[[nodiscard]] Preview LastPreview(not_null<Main::Session*> session) {
++	const auto &messages = Runner::For(session).messages();
++	for (auto i = int(messages.size()); i != 0; --i) {
++		const auto &message = messages[i - 1];
++		if (message.role == Role::Tool || message.text.trimmed().isEmpty()) {
++			continue;
++		}
++		auto text = PlainPreview(message.text);
++		if (message.role == Role::User) {
++			text = tr::lng_from_you(tr::now) + u": "_q + text;
++		}
++		return { .text = text, .date = TimeId(message.date) };
++	}
++	return { .text = Tr(u"How can I help?"_q) };
++}
++
++void Mirror(not_null<Main::Session*> session, not_null<State*> state) {
++	const auto history = EnsureHistory(EnsureUser(session));
++	auto preview = LastPreview(session);
++	if (!preview.date) {
++		if (!state->placeholderDate) {
++			state->placeholderDate = base::unixtime::now();
++		}
++		preview.date = state->placeholderDate;
++	}
++	const auto owner = &session->data();
++	const auto existing = owner->message(state->mirrored);
++	if (existing
++		&& (state->text == preview.text)
++		&& (state->date == preview.date)) {
++		return;
++	}
++	if (existing) {
++		existing->destroy();
++	}
++	const auto item = history->makeMessage({
++		.id = owner->nextLocalMessageId(),
++		.flags = MessageFlag::Local,
++		.from = history->peer->id,
++		.date = preview.date,
++	}, TextWithEntities{ preview.text }, MTP_messageMediaEmpty());
++	history->addNewLocalMessage(item);
++	state->mirrored = item->fullId();
++	state->text = preview.text;
++	state->date = preview.date;
++	history->updateChatListExistence();
++	owner->sendHistoryChangeNotifications();
++}
++
++void Show(not_null<Main::Session*> session, not_null<State*> state) {
++	state->shown = true;
++	Mirror(session, state);
++	auto &store = Runner::For(session).store();
++	if (!store.chatPinned()) {
++		const auto history = session->data().history(AgentPeerId());
++		if (SetLocalPin(history, FilterId(), true, true)) {
++			store.setChatPinned(true);
++		}
++	}
++}
++
++void Hide(not_null<Main::Session*> session, not_null<State*> state) {
++	state->shown = false;
++	state->mirrored = FullMsgId();
++	state->text = QString();
++	state->date = 0;
++	const auto history = session->data().historyLoaded(AgentPeerId());
++	if (!history) {
++		return;
++	}
++	auto items = std::vector<not_null<HistoryItem*>>();
++	for (const auto &item : history->clientSideMessages()) {
++		items.push_back(item);
++	}
++	for (const auto &item : items) {
++		item->destroy();
++	}
++	RefreshLocalPins(session);
++	history->updateChatListExistence();
++	session->data().sendHistoryChangeNotifications();
++}
++
++void TogglePin(not_null<History*> history) {
++	(void)SetLocalPin(history, FilterId(), !history->isPinnedDialog(FilterId()));
++}
++
++} // namespace
++
++PeerId AgentPeerId() {
++	return peerFromUser(kUserId);
++}
++
++bool IsAgentPeer(const PeerData *peer) {
++	return peer && (peer->id == AgentPeerId());
++}
++
++bool AgentPinForced(not_null<Main::Session*> session, PeerId peerId) {
++	if (peerId != AgentPeerId()) {
++		return false;
++	}
++	const auto state = StateFor(session);
++	return state && state->shown;
++}
++
++QImage *AgentUserpic() {
++	struct Cached {
++		QImage image;
++		int palette = -1;
++	};
++	static auto cached = Cached();
++	if (cached.palette != style::PaletteVersion()) {
++		auto image = QImage(
++			QSize(kUserpicSize, kUserpicSize),
++			QImage::Format_ARGB32_Premultiplied);
++		image.fill(st::activeButtonBg->c);
++		auto p = QPainter(&image);
++		auto hq = PainterHighQualityEnabler(p);
++		const auto inset = kUserpicSize * 0.26;
++		PaintSparkles(
++			p,
++			QRectF(
++				inset,
++				inset,
++				kUserpicSize - 2 * inset,
++				kUserpicSize - 2 * inset),
++			st::activeButtonFg->c);
++		p.end();
++		cached.image = std::move(image);
++		cached.palette = style::PaletteVersion();
++	}
++	return &cached.image;
++}
++
++QString AgentStatus() {
++	return Tr(u"Works with your own API key"_q);
++}
++
++rpl::producer<bool> AgentConfiguredValue(not_null<Main::Session*> session) {
++	return rpl::single(
++		rpl::empty
++	) | rpl::then(rpl::merge(
++		Runner::For(session).updates(),
++		AgentProviderValue() | rpl::to_empty
++	)) | rpl::map([=] {
++		return !Runner::For(session).key(CurrentProvider()).isEmpty();
++	}) | rpl::distinct_until_changed();
++}
++
++History *AgentChatHistory(not_null<Main::Session*> session) {
++	const auto state = StateFor(session);
++	return (state && state->shown)
++		? session->data().historyLoaded(AgentPeerId())
++		: nullptr;
++}
++
++void SetupAgentPeer(not_null<Main::Session*> session) {
++	auto &states = States();
++	if (states.contains(session)) {
++		return;
++	}
++	const auto state = states.emplace(
++		session,
++		std::make_unique<State>()).first->second.get();
++	session->lifetime().add([=] {
++		States().remove(session);
++	});
++	crl::on_main(session, [=] {
++		rpl::combine(
++			AgentConfiguredValue(session),
++			AgentNavigationValue()
++		) | rpl::map([](bool configured, const QString &navigation) {
++			return configured && (navigation == u"chat"_q);
++		}) | rpl::distinct_until_changed(
++		) | rpl::on_next([=](bool shown) {
++			if (shown) {
++				Show(session, state);
++			} else if (state->shown) {
++				Hide(session, state);
++			}
++		}, session->lifetime());
++
++		Runner::For(session).updates(
++		) | rpl::on_next([=] {
++			if (!state->shown) {
++				return;
++			}
++			const auto &runner = Runner::For(session);
++			const auto running = runner.running();
++			const auto status = runner.status();
++			Mirror(session, state);
++			if (running != state->running || status != state->status) {
++				state->running = running;
++				state->status = status;
++				if (const auto history = AgentChatHistory(session)) {
++					history->updateChatListEntry();
++				}
++			}
++		}, session->lifetime());
++	});
++}
++
++void FillAgentMenu(
++		not_null<Window::SessionController*> controller,
++		not_null<History*> history,
++		const Ui::Menu::MenuCallback &addAction) {
++	const auto pinned = history->isPinnedDialog(FilterId());
++	addAction(
++		pinned ? Tr(u"Unpin"_q) : Tr(u"Pin"_q),
++		[=] { TogglePin(history); },
++		pinned ? &st::menuIconUnpin : &st::menuIconPin);
++	addAction(Tr(u"Agent settings"_q), [=] {
++		ShowAgentSettings(controller);
++	}, &st::menuIconSettings);
++}
++
++void PerformAgentQuickAction(
++		not_null<Window::SessionController*> controller,
++		not_null<History*> history,
++		Dialogs::Ui::QuickDialogAction action) {
++	if (action == Dialogs::Ui::QuickDialogAction::Pin) {
++		TogglePin(history);
++	}
++}
++
++bool PaintAgentRowStatus(
++		Painter &p,
++		Data::Thread *thread,
++		QRect rect,
++		int outerWidth,
++		const QColor &color) {
++	const auto history = thread ? thread->owningHistory().get() : nullptr;
++	if (!history || !IsAgentPeer(history->peer)) {
++		return false;
++	}
++	const auto state = StateFor(&history->session());
++	if (!state || !state->running) {
++		return false;
++	}
++	const auto text = state->status.isEmpty()
++		? Tr(u"Typing…"_q)
++		: state->status;
++	p.setFont(st::dialogsTextFont);
++	p.setPen(color);
++	p.drawTextLeft(
++		rect.x(),
++		rect.y(),
++		outerWidth,
++		st::dialogsTextFont->elided(text, std::max(rect.width(), 0)));
++	return true;
++}
++
++} // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_peer.h b/Telegram/SourceFiles/tele/agent/agent_peer.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..50a042015bb7bcc57f970514c7115b559883d498
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/agent/agent_peer.h
+@@ -0,0 +1,57 @@
++#pragma once
++
++class History;
++class Painter;
++class PeerData;
++
++namespace Data {
++class Thread;
++} // namespace Data
++
++namespace Dialogs::Ui {
++using namespace ::Ui;
++enum class QuickDialogAction;
++} // namespace Dialogs::Ui
++
++namespace Main {
++class Session;
++} // namespace Main
++
++namespace Ui::Menu {
++struct MenuCallback;
++} // namespace Ui::Menu
++
++namespace Window {
++class SessionController;
++} // namespace Window
++
++namespace Tele::Agent {
++
++[[nodiscard]] PeerId AgentPeerId();
++[[nodiscard]] bool IsAgentPeer(const PeerData *peer);
++[[nodiscard]] bool AgentPinForced(
++	not_null<Main::Session*> session,
++	PeerId peerId);
++[[nodiscard]] QImage *AgentUserpic();
++[[nodiscard]] QString AgentStatus();
++[[nodiscard]] rpl::producer<bool> AgentConfiguredValue(
++	not_null<Main::Session*> session);
++[[nodiscard]] History *AgentChatHistory(not_null<Main::Session*> session);
++
++void SetupAgentPeer(not_null<Main::Session*> session);
++void FillAgentMenu(
++	not_null<Window::SessionController*> controller,
++	not_null<History*> history,
++	const Ui::Menu::MenuCallback &addAction);
++void PerformAgentQuickAction(
++	not_null<Window::SessionController*> controller,
++	not_null<History*> history,
++	Dialogs::Ui::QuickDialogAction action);
++[[nodiscard]] bool PaintAgentRowStatus(
++	Painter &p,
++	Data::Thread *thread,
++	QRect rect,
++	int outerWidth,
++	const QColor &color);
++
++} // namespace Tele::Agent
 diff --git a/Telegram/SourceFiles/tele/agent/agent_protocol.cpp b/Telegram/SourceFiles/tele/agent/agent_protocol.cpp
 index 3fd7bfe2918e34919f7596d14aad259ece1fb29f..ccffc2e4ec06305638df2e13cad08564b52d7f35 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_protocol.cpp
@@ -3029,9 +3227,29 @@ index 3fd7bfe2918e34919f7596d14aad259ece1fb29f..ccffc2e4ec06305638df2e13cad08564
  					{ u"type"_s, u"text"_s },
  					{ u"text"_s, message.requestText() },
 diff --git a/Telegram/SourceFiles/tele/agent/agent_runner.cpp b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
-index 1bbe28c0f55fed2d5ca57677e55a0188abaa8dec..86388971c168f3968f8180194b3d02a19f3de4c8 100644
+index 1bbe28c0f55fed2d5ca57677e55a0188abaa8dec..84c181d12452346b3865b01796ed89b8aeadc1a0 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_runner.cpp
 +++ b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
+@@ -53,7 +53,9 @@ constexpr auto kMaxErrorBody = 16 * 1024;
+ 	return result;
+ }
+ 
+-[[nodiscard]] QString ToolStatus(const QString &name) {
++} // namespace
++
++QString ToolStatus(const QString &name) {
+ 	if (name == u"web_search"_q) {
+ 		return Tr(u"Searching the web…"_q);
+ 	} else if (name == u"web_fetch"_q) {
+@@ -76,8 +78,6 @@ constexpr auto kMaxErrorBody = 16 * 1024;
+ 	return Tr(u"Working…"_q);
+ }
+ 
+-} // namespace
+-
+ QNetworkRequest ApiRequest(
+ 		Provider provider,
+ 		const QString &url,
 @@ -117,13 +117,18 @@ Runner &Runner::For(not_null<Main::Session*> session) {
  }
  
@@ -3053,10 +3271,19 @@ index 1bbe28c0f55fed2d5ca57677e55a0188abaa8dec..86388971c168f3968f8180194b3d02a1
  	persist();
  	_iterations = 0;
 diff --git a/Telegram/SourceFiles/tele/agent/agent_runner.h b/Telegram/SourceFiles/tele/agent/agent_runner.h
-index 223fd1c6ca766d73600bb5b14e1d2541acb3906e..ffb0779432017e5446eef56f3b104391f86d4296 100644
+index 223fd1c6ca766d73600bb5b14e1d2541acb3906e..cf2bc1f3b319fb726b84dd490acf68e449f3b992 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_runner.h
 +++ b/Telegram/SourceFiles/tele/agent/agent_runner.h
-@@ -31,6 +31,7 @@ public:
+@@ -18,6 +18,8 @@ namespace Tele::Agent {
+ 
+ class Store;
+ 
++[[nodiscard]] QString ToolStatus(const QString &name);
++
+ [[nodiscard]] QNetworkRequest ApiRequest(
+ 	Provider provider,
+ 	const QString &url,
+@@ -31,6 +33,7 @@ public:
  	[[nodiscard]] static Runner &For(not_null<Main::Session*> session);
  
  	void send(const QString &text);
@@ -3066,10 +3293,10 @@ index 223fd1c6ca766d73600bb5b14e1d2541acb3906e..ffb0779432017e5446eef56f3b104391
  	void retry();
 diff --git a/Telegram/SourceFiles/tele/agent/agent_section.cpp b/Telegram/SourceFiles/tele/agent/agent_section.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..8c22107dae53c4e5860eecb4f9aa473165dd16e8
+index 0000000000000000000000000000000000000000..819e0a318194c903886c3103eaf8f0ac0a52b61e
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/agent/agent_section.cpp
-@@ -0,0 +1,338 @@
+@@ -0,0 +1,351 @@
 +#include "tele/agent/agent_section.h"
 +
 +#include "base/unique_qptr.h"
@@ -3077,6 +3304,7 @@ index 0000000000000000000000000000000000000000..8c22107dae53c4e5860eecb4f9aa4731
 +#include "main/main_session.h"
 +#include "tele/agent/agent_chat.h"
 +#include "tele/agent/agent_panel.h"
++#include "tele/agent/agent_peer.h"
 +#include "tele/agent/agent_runner.h"
 +#include "tele/tele_card_widgets.h"
 +#include "tele/tele_lowercase.h"
@@ -3262,6 +3490,7 @@ index 0000000000000000000000000000000000000000..8c22107dae53c4e5860eecb4f9aa4731
 +		not_null<Window::SectionMemento*> memento,
 +		const Window::SectionShow &params) override;
 +	std::shared_ptr<Window::SectionMemento> createMemento() override;
++	Dialogs::RowDescriptor activeChat() const override;
 +	bool floatPlayerHandleWheelEvent(QEvent *e) override;
 +	QRect floatPlayerAvailableRect() override;
 +
@@ -3296,9 +3525,6 @@ index 0000000000000000000000000000000000000000..8c22107dae53c4e5860eecb4f9aa4731
 +	controller->adaptive().value() | rpl::on_next([=] {
 +		updateAdaptiveLayout();
 +	}, lifetime());
-+	crl::on_main(this, [=] {
-+		controller->setActiveChatEntry(Dialogs::Key());
-+	});
 +}
 +
 +Section::~Section() {
@@ -3320,6 +3546,7 @@ index 0000000000000000000000000000000000000000..8c22107dae53c4e5860eecb4f9aa4731
 +	if (params.withTopBarShadow) {
 +		_topBarShadow->hide();
 +	}
++	_chat->prepareForShow();
 +	auto result = Ui::GrabWidget(this);
 +	if (params.withTopBarShadow) {
 +		_topBarShadow->show();
@@ -3335,6 +3562,13 @@ index 0000000000000000000000000000000000000000..8c22107dae53c4e5860eecb4f9aa4731
 +
 +std::shared_ptr<Window::SectionMemento> Section::createMemento() {
 +	return std::make_shared<Memento>();
++}
++
++Dialogs::RowDescriptor Section::activeChat() const {
++	if (const auto history = AgentChatHistory(&controller()->session())) {
++		return { history, FullMsgId() };
++	}
++	return {};
 +}
 +
 +bool Section::floatPlayerHandleWheelEvent(QEvent *e) {
@@ -3358,6 +3592,7 @@ index 0000000000000000000000000000000000000000..8c22107dae53c4e5860eecb4f9aa4731
 +
 +void Section::paintEvent(QPaintEvent *e) {
 +	if (animatingShow()) {
++		QPainter(this).fillRect(e->rect(), st::windowBg);
 +		SectionWidget::paintEvent(e);
 +		return;
 +	} else if (controller()->contentOverlapped(this, e)) {
@@ -3393,6 +3628,11 @@ index 0000000000000000000000000000000000000000..8c22107dae53c4e5860eecb4f9aa4731
 +} // namespace
 +
 +void ShowAgentSection(not_null<Window::SessionController*> controller) {
++	if (const auto history = AgentChatHistory(&controller->session())) {
++		controller->setActiveChatEntry({ history, FullMsgId() });
++	} else {
++		controller->setActiveChatEntry(Dialogs::Key());
++	}
 +	controller->showSection(
 +		std::make_shared<Memento>(),
 +		Window::SectionShow());
@@ -3427,6 +3667,66 @@ index 0000000000000000000000000000000000000000..2cd37d4401b901a7cc4e4392e4f8d46b
 +	not_null<Window::SessionController*> controller);
 +
 +} // namespace Tele::Agent
+diff --git a/Telegram/SourceFiles/tele/agent/agent_store.cpp b/Telegram/SourceFiles/tele/agent/agent_store.cpp
+index 2bc47b62c0162a86772550a4b29276f3d8bda65a..614746335570445a85208b507d5041270267d338 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_store.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_store.cpp
+@@ -88,6 +88,17 @@ void Store::setMessages(std::vector<Message> messages) {
+ 	write();
+ }
+ 
++bool Store::chatPinned() const {
++	return _chatPinned;
++}
++
++void Store::setChatPinned(bool pinned) {
++	if (_chatPinned != pinned) {
++		_chatPinned = pinned;
++		write();
++	}
++}
++
+ const std::vector<AutoReply> &Store::autoReplies() const {
+ 	return _autoReplies;
+ }
+@@ -138,6 +149,7 @@ void Store::read() {
+ 		}
+ 	}
+ 	_messages = ParseMessages(object.value(u"messages"_q).toArray());
++	_chatPinned = object.value(u"chatPinned"_q).toBool();
+ 	for (const auto &value : object.value(u"autoReplies"_q).toArray()) {
+ 		const auto entry = value.toObject();
+ 		auto reply = AutoReply{
+@@ -185,6 +197,7 @@ void Store::write() const {
+ 		{ u"keys"_q, keys },
+ 		{ u"messages"_q, SerializeMessages(_messages) },
+ 		{ u"autoReplies"_q, replies },
++		{ u"chatPinned"_q, _chatPinned },
+ 	}).toJson(QJsonDocument::Compact);
+ 	auto data = EncryptedDescriptor(
+ 		sizeof(quint32) * 2 + sizeof(quint64) + sizeof(quint32) + blob.size());
+diff --git a/Telegram/SourceFiles/tele/agent/agent_store.h b/Telegram/SourceFiles/tele/agent/agent_store.h
+index 6403aa3ce043b8ce3ebba6b5bfba3153482cda39..bae4f1d7e117a10e03c96895457986668f7253b1 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_store.h
++++ b/Telegram/SourceFiles/tele/agent/agent_store.h
+@@ -29,6 +29,9 @@ public:
+ 	[[nodiscard]] const std::vector<Message> &messages() const;
+ 	void setMessages(std::vector<Message> messages);
+ 
++	[[nodiscard]] bool chatPinned() const;
++	void setChatPinned(bool pinned);
++
+ 	[[nodiscard]] const std::vector<AutoReply> &autoReplies() const;
+ 	void setAutoReplies(std::vector<AutoReply> list);
+ 	[[nodiscard]] rpl::producer<> autoRepliesChanges() const;
+@@ -42,6 +45,7 @@ private:
+ 	std::map<QString, QString> _keys;
+ 	std::vector<Message> _messages;
+ 	std::vector<AutoReply> _autoReplies;
++	bool _chatPinned = false;
+ 	rpl::event_stream<> _autoRepliesChanges;
+ 
+ };
 diff --git a/Telegram/SourceFiles/tele/agent/agent_tools.cpp b/Telegram/SourceFiles/tele/agent/agent_tools.cpp
 index a9e013b879004be3bfb31e1e23eb41965b841358..010e022a1b104e60111f9d297a6562e19a238459 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_tools.cpp
@@ -3453,6 +3753,321 @@ index 54081d5c82fc1c64ba1c306efc3c0a2943d4aeb2..68a1b9b83c8750ca5afc1b0999d873c1
 +[[nodiscard]] Image PreparePhoto(QImage image);
  
  class Tools final : public base::has_weak_ptr {
+ public:
+diff --git a/Telegram/SourceFiles/tele/tele_changelog_chat.cpp b/Telegram/SourceFiles/tele/tele_changelog_chat.cpp
+index 3181b054ef39277e2fbdf57be15917baf1e0516e..ba0b9245b7649f27a92b82f6ded6a5e2cb70d7e7 100644
+--- a/Telegram/SourceFiles/tele/tele_changelog_chat.cpp
++++ b/Telegram/SourceFiles/tele/tele_changelog_chat.cpp
+@@ -16,6 +16,8 @@
+ #include "iv/iv_rich_page.h"
+ #include "lang/lang_keys.h"
+ #include "main/main_session.h"
++#include "tele/agent/agent_panel.h"
++#include "tele/agent/agent_peer.h"
+ #include "tele/tele_changelog.h"
+ #include "tele/tele_changelog_section.h"
+ #include "tele/tele_html_playground.h"
+@@ -213,12 +215,16 @@ void ShowProfile(
+ 
+ bool IsChangelogPeer(const PeerData *peer) {
+ 	return peer
+-		&& ((peer->id == ChangelogPeerId()) || Html::IsPlaygroundPeer(peer));
++		&& ((peer->id == ChangelogPeerId())
++			|| Html::IsPlaygroundPeer(peer)
++			|| Agent::IsAgentPeer(peer));
+ }
+ 
+ QImage *ChangelogUserpic(not_null<const PeerData*> peer) {
+ 	if (Html::IsPlaygroundPeer(peer)) {
+ 		return Html::PlaygroundUserpic();
++	} else if (Agent::IsAgentPeer(peer)) {
++		return Agent::AgentUserpic();
+ 	} else if (!IsChangelogPeer(peer)) {
+ 		return nullptr;
+ 	}
+@@ -234,6 +240,8 @@ QImage *ChangelogUserpic(not_null<const PeerData*> peer) {
+ std::optional<QString> ChangelogStatus(not_null<const UserData*> user) {
+ 	return Html::IsPlaygroundPeer(user)
+ 		? Html::PlaygroundStatus()
++		: Agent::IsAgentPeer(user)
++		? Agent::AgentStatus()
+ 		: IsChangelogPeer(user)
+ 		? StatusText()
+ 		: std::optional<QString>();
+@@ -305,6 +313,9 @@ bool ShowChangelogChat(
+ 	if (peerId == Html::PlaygroundPeerId()) {
+ 		Html::ShowPlayground(controller, params);
+ 		return true;
++	} else if (peerId == Agent::AgentPeerId()) {
++		Agent::ShowAgent(controller);
++		return true;
+ 	} else if (peerId != ChangelogPeerId()) {
+ 		return false;
+ 	}
+@@ -337,7 +348,7 @@ bool ShowChangelogProfile(
+ 	const auto peer = info->content()->peer();
+ 	if (!IsChangelogPeer(peer)) {
+ 		return false;
+-	} else if (Html::IsPlaygroundPeer(peer)) {
++	} else if (Html::IsPlaygroundPeer(peer) || Agent::IsAgentPeer(peer)) {
+ 		return true;
+ 	} else if (!params.thirdColumn) {
+ 		ShowProfile(controller, peer->asUser());
+@@ -352,6 +363,9 @@ bool FillChangelogMenu(
+ 	const auto history = request.key.history();
+ 	if (!history || !IsChangelogPeer(history->peer)) {
+ 		return false;
++	} else if (Agent::IsAgentPeer(history->peer)) {
++		Agent::FillAgentMenu(controller, history, addAction);
++		return true;
+ 	} else if (Html::IsPlaygroundPeer(history->peer)) {
+ 		if (history->unreadCount() > 0) {
+ 			addAction(tr::lng_context_mark_read(tr::now), [=] {
+@@ -397,6 +411,10 @@ bool PerformChangelogQuickAction(
+ 	}
+ 	using Action = Dialogs::Ui::QuickDialogAction;
+ 	const auto history = peer->owner().history(peer);
++	if (Agent::IsAgentPeer(peer)) {
++		Agent::PerformAgentQuickAction(controller, history, action);
++		return true;
++	}
+ 	if (action == Action::Read) {
+ 		MarkRead(history);
+ 	} else if (action == Action::Delete) {
+diff --git a/Telegram/SourceFiles/tele/tele_local_pins.cpp b/Telegram/SourceFiles/tele/tele_local_pins.cpp
+index f9a6d94d8586b97de345331e4fddc8909e10cc91..fdb2bb041b5c2d088960cadc54c31ee9dec4b851 100644
+--- a/Telegram/SourceFiles/tele/tele_local_pins.cpp
++++ b/Telegram/SourceFiles/tele/tele_local_pins.cpp
+@@ -21,6 +21,7 @@
+ #include "mtproto/mtproto_response.h"
+ #include "storage/details/storage_file_utilities.h"
+ #include "storage/storage_account.h"
++#include "tele/agent/agent_peer.h"
+ #include "tele/tele_options.h"
+ #include "window/window_session_controller.h"
+ 
+@@ -149,6 +150,34 @@ bool PaintingLocal = false;
+ 	return ranges::find(items, id, &Item::id);
+ }
+ 
++[[nodiscard]] bool AgentItem(ListId list, const Item &item) {
++	return (list.kind == ListKind::Chats)
++		&& !list.id
++		&& (PeerId(item.id) == Agent::AgentPeerId());
++}
++
++[[nodiscard]] bool AgentEntry(not_null<const Dialogs::Entry*> entry) {
++	const auto history = entry->asHistory();
++	return history && Agent::IsAgentPeer(history->peer);
++}
++
++[[nodiscard]] bool Usable(
++		not_null<Main::Session*> session,
++		ListId list,
++		const Item &item) {
++	return AgentItem(list, item)
++		? Agent::AgentPinForced(session, PeerId(item.id))
++		: LocalPins();
++}
++
++[[nodiscard]] bool AllowedFor(not_null<Dialogs::Entry*> entry) {
++	return AgentEntry(entry)
++		? Agent::AgentPinForced(
++			&entry->session(),
++			entry->asHistory()->peer->id)
++		: LocalPins();
++}
++
+ struct Placed {
+ 	ListId list;
+ 	Item item;
+@@ -189,7 +218,9 @@ public:
+ 	[[nodiscard]] bool set(
+ 		not_null<Dialogs::Entry*> entry,
+ 		FilterId filterId,
+-		bool pinned);
++		bool pinned,
++		bool first);
++	void refreshNow();
+ 
+ private:
+ 	[[nodiscard]] static base::flat_map<
+@@ -201,7 +232,10 @@ private:
+ 	void write() const;
+ 	void scheduleRefresh();
+ 	void refresh();
+-	void add(ListId list, Item item);
++	[[nodiscard]] bool active(
++		ListId list,
++		const std::vector<Item> &items) const;
++	void add(ListId list, Item item, bool first = false);
+ 	bool removeLocal(ListId list, uint64 id, bool server);
+ 	void load(ListId list, Item item);
+ 	[[nodiscard]] Dialogs::Entry *resolve(
+@@ -573,21 +607,25 @@ void State::refresh() {
+ 	auto now = std::vector<Placed>();
+ 	auto shown = base::flat_set<Shown>();
+ 	auto positions = base::flat_map<Shown, int>();
+-	if (LocalPins()) {
++	{
+ 		for (auto &[list, items] : _lists) {
++			if (!active(list, items)) {
++				continue;
++			}
+ 			changed = merge(list, items) || changed;
+ 			const auto filterId = FilterOf(list);
+ 			const auto order = serverOrder(list);
+ 			auto position = 0;
+ 			for (const auto &item : items) {
++				const auto local = item.local && Usable(_session, list, item);
+ 				auto entry = resolve(list, item, false);
+ 				const auto server = entry
+ 					&& order
+ 					&& ranges::contains(*order, Dialogs::Key(entry));
+ 				if (!server) {
+-					entry = item.local ? resolve(list, item, true) : nullptr;
++					entry = local ? resolve(list, item, true) : nullptr;
+ 					if (!entry) {
+-						if (item.local) {
++						if (local && !AgentItem(list, item)) {
+ 							load(list, item);
+ 						}
+ 						continue;
+@@ -653,7 +691,19 @@ void State::refresh() {
+ 	_refreshing = false;
+ }
+ 
+-void State::add(ListId list, Item item) {
++bool State::active(ListId list, const std::vector<Item> &items) const {
++	return LocalPins() || ranges::any_of(items, [&](const Item &item) {
++		return item.local
++			&& AgentItem(list, item)
++			&& Usable(_session, list, item);
++	});
++}
++
++void State::refreshNow() {
++	refresh();
++}
++
++void State::add(ListId list, Item item, bool first) {
+ 	auto i = _lists.find(list);
+ 	if (i == end(_lists)) {
+ 		i = _lists.emplace(list, serverItems(list)).first;
+@@ -662,9 +712,16 @@ void State::add(ListId list, Item item) {
+ 	const auto j = FindItem(items, item.id);
+ 	if (j != end(items)) {
+ 		j->local = true;
++		if (first) {
++			std::rotate(begin(items), j, j + 1);
++		}
+ 	} else {
+ 		item.local = true;
+-		items.push_back(item);
++		if (first) {
++			items.insert(begin(items), item);
++		} else {
++			items.push_back(item);
++		}
+ 	}
+ 	write();
+ 	refresh();
+@@ -675,7 +732,7 @@ bool State::toggle(
+ 		not_null<Dialogs::Entry*> entry,
+ 		FilterId filterId,
+ 		Fn<void()> onToggled) {
+-	if (!LocalPins()) {
++	if (!AllowedFor(entry)) {
+ 		return false;
+ 	}
+ 	const auto list = ListFor(entry, filterId);
+@@ -692,7 +749,7 @@ bool State::toggle(
+ 	const auto canPin = filterId
+ 		? owner->pinnedCanPin(filterId, history)
+ 		: owner->pinnedCanPin(entry);
+-	if (canPin) {
++	if (canPin && !AgentEntry(entry)) {
+ 		return false;
+ 	}
+ 	add(*list, item);
+@@ -756,14 +813,15 @@ std::vector<PeerId> State::chats(FilterId filterId) const {
+ bool State::set(
+ 		not_null<Dialogs::Entry*> entry,
+ 		FilterId filterId,
+-		bool pinned) {
++		bool pinned,
++		bool first) {
+ 	const auto list = ListFor(entry, filterId);
+-	if (!LocalPins() || !list) {
++	if (!AllowedFor(entry) || !list) {
+ 		return false;
+ 	}
+ 	const auto item = ItemFor(entry);
+ 	if (pinned) {
+-		add(*list, item);
++		add(*list, item, first);
+ 	} else {
+ 		removeLocal(*list, item.id, ServerPinned(entry, filterId));
+ 	}
+@@ -774,15 +832,12 @@ bool State::reorder(
+ 		FilterId filterId,
+ 		not_null<Dialogs::Entry*> entry1,
+ 		not_null<Dialogs::Entry*> entry2) {
+-	if (!LocalPins()) {
+-		return false;
+-	}
+ 	const auto list = ListFor(entry1, filterId);
+ 	if (!list || list != ListFor(entry2, filterId)) {
+ 		return false;
+ 	}
+ 	const auto i = _lists.find(*list);
+-	if (i == end(_lists)) {
++	if (i == end(_lists) || !active(*list, i->second)) {
+ 		return false;
+ 	}
+ 	const auto server = ServerPinned(entry1, filterId)
+@@ -1017,9 +1072,16 @@ std::vector<PeerId> LocalPinnedChats(
+ bool SetLocalPin(
+ 		not_null<Dialogs::Entry*> entry,
+ 		FilterId filterId,
+-		bool pinned) {
++		bool pinned,
++		bool first) {
+ 	const auto state = State::Find(&entry->session());
+-	return state && state->set(entry, filterId, pinned);
++	return state && state->set(entry, filterId, pinned, first);
++}
++
++void RefreshLocalPins(not_null<Main::Session*> session) {
++	if (const auto state = State::Find(session)) {
++		state->refreshNow();
++	}
+ }
+ 
+ int PinnedSortIndex(
+@@ -1038,7 +1100,7 @@ LocalPinPaint::LocalPinPaint(
+ 	const auto state = State::Find(&entry->session());
+ 	_was = std::exchange(
+ 		PaintingLocal,
+-		state && state->shown(entry, filterId));
++		state && state->shown(entry, filterId) && !AgentEntry(entry));
+ }
+ 
+ LocalPinPaint::~LocalPinPaint() {
+diff --git a/Telegram/SourceFiles/tele/tele_local_pins.h b/Telegram/SourceFiles/tele/tele_local_pins.h
+index 6f4d5ea925a57bdf4b2288cf256be69e7cbfc52d..95567770ac27fecc75232aaba559d035915efc97 100644
+--- a/Telegram/SourceFiles/tele/tele_local_pins.h
++++ b/Telegram/SourceFiles/tele/tele_local_pins.h
+@@ -49,7 +49,9 @@ void SetupLocalPins(not_null<Main::Session*> session);
+ [[nodiscard]] bool SetLocalPin(
+ 	not_null<Dialogs::Entry*> entry,
+ 	FilterId filterId,
+-	bool pinned);
++	bool pinned,
++	bool first = false);
++void RefreshLocalPins(not_null<Main::Session*> session);
+ 
+ class LocalPinPaint final {
  public:
 diff --git a/Telegram/SourceFiles/tele/tele_mad_link_parser.cpp b/Telegram/SourceFiles/tele/tele_mad_link_parser.cpp
 index 55703a421be16f2a54019e1f4f7347f789b243a8..e6c9624f5ebe19c908d132599277bb15dfb3a630 100644
