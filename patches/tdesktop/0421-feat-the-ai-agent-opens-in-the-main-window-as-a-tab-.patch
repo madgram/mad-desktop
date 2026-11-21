@@ -10,7 +10,7 @@ Subject: [PATCH] feat: the ai agent opens in the main window as a tab or a
  .../SourceFiles/dialogs/dialogs_widget.cpp    |   12 +
  .../SourceFiles/settings/settings_tele.cpp    |  511 ++++++-
  .../tele/agent/agent_auto_reply.cpp           |    4 +
- .../SourceFiles/tele/agent/agent_chat.cpp     | 1190 +++++++++++++++++
+ .../SourceFiles/tele/agent/agent_chat.cpp     | 1194 +++++++++++++++++
  Telegram/SourceFiles/tele/agent/agent_chat.h  |   85 ++
  .../tele/agent/agent_navigation.cpp           |  418 ++++++
  .../SourceFiles/tele/agent/agent_navigation.h |   30 +
@@ -28,7 +28,7 @@ Subject: [PATCH] feat: the ai agent opens in the main window as a tab or a
  Telegram/SourceFiles/tele/tele_options.h      |    6 +
  .../SourceFiles/tele/tele_settings_io.cpp     |    2 +
  .../window/window_filters_menu.cpp            |    2 +
- 23 files changed, 2673 insertions(+), 491 deletions(-)
+ 23 files changed, 2677 insertions(+), 491 deletions(-)
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_chat.cpp
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_chat.h
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_navigation.cpp
@@ -759,10 +759,10 @@ index 7ebb9a6b3486a9c3b38181e0a2ffce617bd31a33..e2a54f01c56cafeb504b199b74b65b8a
  		.user = job->user,
 diff --git a/Telegram/SourceFiles/tele/agent/agent_chat.cpp b/Telegram/SourceFiles/tele/agent/agent_chat.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..d5a94ad0f6e12971d6d749bd11d5ebeb7712b105
+index 0000000000000000000000000000000000000000..cd56eaa3f6834de3d16f93b43a562b4357045e3d
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/agent/agent_chat.cpp
-@@ -0,0 +1,1190 @@
+@@ -0,0 +1,1194 @@
 +#include "tele/agent/agent_chat.h"
 +
 +#include "core/file_utilities.h"
@@ -1559,7 +1559,11 @@ index 0000000000000000000000000000000000000000..d5a94ad0f6e12971d6d749bd11d5ebeb
 +		rpl::single(Tr(u"Message the agent"_q)),
 +		QString());
 +	_field->setSubmitSettings(Ui::InputField::SubmitSettings::Enter);
++	_field->setMinHeight(
++		st::historySendSize.height() - 2 * st::historySendPadding);
 +	_field->setMaxHeight(CardScaled(160));
++	_field->setDocumentMargin(4.);
++	_field->setAdditionalMargin(style::ConvertScale(4) - 4);
 +	_send = Ui::CreateChild<Ui::SendButton>(composer, st::aiComposeSendButton);
 +	_send->setState({ .type = Ui::SendButton::Type::Send });
 +	const auto preview = Ui::CreateChild<PaintedButton>(composer, [=](
