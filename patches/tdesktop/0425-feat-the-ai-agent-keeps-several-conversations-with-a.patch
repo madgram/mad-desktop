@@ -1,0 +1,851 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 19:23:50 +0200
+Subject: [PATCH] feat: the ai agent keeps several conversations with a history
+
+---
+ Telegram/Resources/langs/mad_ru.json          |   8 +-
+ .../SourceFiles/tele/agent/agent_peer.cpp     |   5 +
+ .../SourceFiles/tele/agent/agent_protocol.cpp |  17 ++
+ .../SourceFiles/tele/agent/agent_protocol.h   |   1 +
+ .../SourceFiles/tele/agent/agent_runner.cpp   |  43 ++++
+ .../SourceFiles/tele/agent/agent_runner.h     |   7 +
+ .../SourceFiles/tele/agent/agent_section.cpp  | 222 ++++++++++++++++-
+ .../SourceFiles/tele/agent/agent_store.cpp    | 229 +++++++++++++++++-
+ Telegram/SourceFiles/tele/agent/agent_store.h |  21 ++
+ .../tele/tests/mad_logic_tests.cpp            |   7 +
+ 10 files changed, 543 insertions(+), 17 deletions(-)
+
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 7135193147f233bc75ceb2cfcac18a344f178ef9..47135d7c914f0bb6b0805ce2b257d40de0369862 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2470,5 +2470,11 @@
+   "Available models": "Доступные модели",
+   "Loading the list of models…": "Загружаю список моделей…",
+   "Add an API key to load the list of models.": "Добавь API-ключ, чтобы загрузить список моделей.",
+-  "The provider returned no models.": "Провайдер не вернул ни одной модели."
++  "The provider returned no models.": "Провайдер не вернул ни одной модели.",
++  "New chat": "Новый диалог",
++  "Chat history": "История диалогов",
++  "No saved chats yet": "Пока нет сохранённых диалогов",
++  "Wait until the agent answers.": "Дождись, пока агент ответит.",
++  "Delete this chat with the agent?": "Удалить этот диалог с агентом?",
++  "Untitled": "Без названия"
+ }
+diff --git a/Telegram/SourceFiles/tele/agent/agent_peer.cpp b/Telegram/SourceFiles/tele/agent/agent_peer.cpp
+index 8e3daf59fbe2fb2233bbfac116765b497f328f97..576257d8b3f85c089d7436ff61758c22e129234c 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_peer.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_peer.cpp
+@@ -328,6 +328,11 @@ void FillAgentMenu(
+ 		pinned ? Tr(u"Unpin"_q) : Tr(u"Pin"_q),
+ 		[=] { TogglePin(history); },
+ 		pinned ? &st::menuIconUnpin : &st::menuIconPin);
++	addAction(Tr(u"New chat"_q), [=] {
++		if (!Runner::For(&history->session()).startConversation()) {
++			controller->showToast(Tr(u"Wait until the agent answers."_q));
++		}
++	}, &st::menuIconEdit);
+ 	addAction(Tr(u"Agent settings"_q), [=] {
+ 		ShowAgentSettings(controller);
+ 	}, &st::menuIconSettings);
+diff --git a/Telegram/SourceFiles/tele/agent/agent_protocol.cpp b/Telegram/SourceFiles/tele/agent/agent_protocol.cpp
+index 588f11bb720b670a7797854b531c9784cb6169df..7253269d55b9f7091a99032dd8d53eaf08050480 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_protocol.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_protocol.cpp
+@@ -135,6 +135,23 @@ Message MakeMessage(Role role, const QString &text) {
+ 	return result;
+ }
+ 
++QString ConversationTitle(const std::vector<Message> &messages) {
++	constexpr auto kTitleLimit = 60;
++	for (const auto &message : messages) {
++		if (message.role != Role::User) {
++			continue;
++		}
++		const auto text = message.text.simplified();
++		if (text.isEmpty()) {
++			continue;
++		}
++		return (text.size() > kTitleLimit)
++			? (text.left(kTitleLimit).trimmed() + QChar(0x2026))
++			: text;
++	}
++	return QString();
++}
++
+ ModelPage ParseModelPage(const QByteArray &json) {
+ 	auto result = ModelPage();
+ 	const auto document = QJsonDocument::fromJson(json);
+diff --git a/Telegram/SourceFiles/tele/agent/agent_protocol.h b/Telegram/SourceFiles/tele/agent/agent_protocol.h
+index 18abbc741abb29967164678543434ae533a0a409..724707753ffc93519097ec8d5536e0bf9ecc08fb 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_protocol.h
++++ b/Telegram/SourceFiles/tele/agent/agent_protocol.h
+@@ -101,6 +101,7 @@ struct ModelPage {
+ 	QString lastId;
+ };
+ 
++[[nodiscard]] QString ConversationTitle(const std::vector<Message> &messages);
+ [[nodiscard]] ModelPage ParseModelPage(const QByteArray &json);
+ [[nodiscard]] std::vector<ModelInfo> PreparedModels(
+ 	Provider provider,
+diff --git a/Telegram/SourceFiles/tele/agent/agent_runner.cpp b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
+index 8da7350864830928ca6627a69830c20b6ef79a9b..6aadf34d10598006be8237d2af1c7793be90d009 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_runner.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
+@@ -156,6 +156,49 @@ void Runner::clear() {
+ 	notify();
+ }
+ 
++const std::vector<Conversation> &Runner::conversations() const {
++	return _store->conversations();
++}
++
++QString Runner::currentConversation() const {
++	return _store->currentConversation();
++}
++
++bool Runner::startConversation() {
++	if (_running) {
++		return false;
++	}
++	_store->startConversation();
++	_messages = _store->messages();
++	_lastError = QString();
++	notify();
++	return true;
++}
++
++bool Runner::switchConversation(const QString &id) {
++	if (_running) {
++		return false;
++	}
++	_store->switchConversation(id);
++	_messages = _store->messages();
++	RepairDanglingToolCalls(_messages, Cancelled());
++	_lastError = QString();
++	notify();
++	return true;
++}
++
++bool Runner::removeConversation(const QString &id) {
++	if (_running && (id == _store->currentConversation())) {
++		return false;
++	}
++	_store->removeConversation(id);
++	_messages = _store->messages();
++	RepairDanglingToolCalls(_messages, Cancelled());
++	_lastError = QString();
++	notify();
++	return true;
++}
++
+ void Runner::retry() {
+ 	if (!canRetry()) {
+ 		return;
+diff --git a/Telegram/SourceFiles/tele/agent/agent_runner.h b/Telegram/SourceFiles/tele/agent/agent_runner.h
+index a250b899500f160560ea1d267987605892434c87..83f5ba87356cbc287dc1b9ebbe18e3fa9ce6a80c 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_runner.h
++++ b/Telegram/SourceFiles/tele/agent/agent_runner.h
+@@ -17,6 +17,7 @@ class Session;
+ namespace Tele::Agent {
+ 
+ class Store;
++struct Conversation;
+ 
+ [[nodiscard]] QString ToolStatus(const QString &name);
+ 
+@@ -38,6 +39,12 @@ public:
+ 	void clear();
+ 	void retry();
+ 
++	[[nodiscard]] const std::vector<Conversation> &conversations() const;
++	[[nodiscard]] QString currentConversation() const;
++	[[nodiscard]] bool startConversation();
++	[[nodiscard]] bool switchConversation(const QString &id);
++	[[nodiscard]] bool removeConversation(const QString &id);
++
+ 	[[nodiscard]] const std::vector<Message> &messages() const;
+ 	[[nodiscard]] QString streaming() const;
+ 	[[nodiscard]] bool running() const;
+diff --git a/Telegram/SourceFiles/tele/agent/agent_section.cpp b/Telegram/SourceFiles/tele/agent/agent_section.cpp
+index 819e0a318194c903886c3103eaf8f0ac0a52b61e..aa70a1e67ddb7557b5bb4c877c13d4dae2071f2e 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_section.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_section.cpp
+@@ -1,16 +1,22 @@
+ #include "tele/agent/agent_section.h"
+ 
+ #include "base/unique_qptr.h"
++#include "base/unixtime.h"
+ #include "dialogs/dialogs_key.h"
+ #include "main/main_session.h"
+ #include "tele/agent/agent_chat.h"
+ #include "tele/agent/agent_panel.h"
+ #include "tele/agent/agent_peer.h"
+ #include "tele/agent/agent_runner.h"
++#include "tele/agent/agent_store.h"
+ #include "tele/tele_card_widgets.h"
+ #include "tele/tele_lowercase.h"
+ #include "ui/boxes/confirm_box.h"
++#include "ui/layers/generic_box.h"
+ #include "ui/painter.h"
++#include "ui/text/format_values.h"
++#include "ui/widgets/labels.h"
++#include "ui/wrap/vertical_layout.h"
+ #include "ui/ui_utility.h"
+ #include "ui/widgets/buttons.h"
+ #include "ui/widgets/popup_menu.h"
+@@ -27,6 +33,7 @@
+ #include "styles/style_widgets.h"
+ 
+ #include <QtGui/QCursor>
++#include <QtGui/QPainterPath>
+ 
+ #include <map>
+ 
+@@ -55,6 +62,183 @@ namespace {
+ 	return i->second;
+ }
+ 
++void StartNewChat(not_null<Window::SessionController*> controller) {
++	if (!Runner::For(&controller->session()).startConversation()) {
++		controller->showToast(Tr(u"Wait until the agent answers."_q));
++	}
++}
++
++class HistoryRow final : public Ui::RippleButton {
++public:
++	HistoryRow(QWidget *parent, Conversation conversation, bool current);
++
++	[[nodiscard]] rpl::producer<> removeRequests() const;
++
++protected:
++	int resizeGetHeight(int newWidth) override;
++	void paintEvent(QPaintEvent *e) override;
++
++private:
++	const Conversation _conversation;
++	const bool _current = false;
++	object_ptr<PaintedButton> _remove;
++	rpl::event_stream<> _removeRequests;
++
++};
++
++HistoryRow::HistoryRow(
++	QWidget *parent,
++	Conversation conversation,
++	bool current)
++: RippleButton(parent, st::defaultRippleAnimation)
++, _conversation(std::move(conversation))
++, _current(current)
++, _remove(this, [](QPainter &p, QRect rect, bool over) {
++	st::menuIconDelete.paintInCenter(
++		p,
++		rect,
++		over ? st::menuIconFgOver->c : st::menuIconFg->c);
++}) {
++	_remove->resize(CardScaled(40), CardScaled(40));
++	_remove->setClickedCallback([=] {
++		_removeRequests.fire({});
++	});
++	widthValue() | rpl::on_next([=](int width) {
++		_remove->moveToRight(
++			CardScaled(12),
++			(resizeGetHeight(width) - _remove->height()) / 2,
++			width);
++	}, lifetime());
++}
++
++rpl::producer<> HistoryRow::removeRequests() const {
++	return _removeRequests.events();
++}
++
++int HistoryRow::resizeGetHeight(int newWidth) {
++	return CardScaled(60);
++}
++
++void HistoryRow::paintEvent(QPaintEvent *e) {
++	auto p = QPainter(this);
++	p.fillRect(e->rect(), isOver() ? st::windowBgOver : st::windowBg);
++	paintRipple(p, 0, 0);
++	const auto left = st::boxRowPadding.left();
++	const auto check = CardScaled(18);
++	const auto right = width()
++		- CardScaled(12)
++		- _remove->width()
++		- (_current ? (check + CardScaled(8)) : 0);
++	const auto available = std::max(right - left - CardScaled(8), 0);
++	const auto titleFont = CardFont(15, false);
++	const auto dateFont = CardFont(13, false);
++	const auto skip = CardScaled(3);
++	const auto top = (height() - titleFont->height - skip - dateFont->height)
++		/ 2;
++	const auto title = _conversation.title.isEmpty()
++		? Tr(u"Untitled"_q)
++		: _conversation.title;
++	p.setFont(titleFont);
++	p.setPen(st::windowBoldFg);
++	p.drawText(left, top + titleFont->ascent, titleFont->elided(title, available));
++	p.setFont(dateFont);
++	p.setPen(st::windowSubTextFg);
++	p.drawText(
++		left,
++		top + titleFont->height + skip + dateFont->ascent,
++		_conversation.updated
++			? Ui::FormatDialogsDate(base::unixtime::parse(_conversation.updated))
++			: QString());
++	if (_current) {
++		auto hq = PainterHighQualityEnabler(p);
++		const auto x = right + CardScaled(4);
++		const auto y = (height() - check) / 2.;
++		auto pen = QPen(st::windowActiveTextFg);
++		pen.setWidthF(CardScaled(2) * 1.);
++		pen.setCapStyle(Qt::RoundCap);
++		pen.setJoinStyle(Qt::RoundJoin);
++		p.setPen(pen);
++		p.setBrush(Qt::NoBrush);
++		auto path = QPainterPath();
++		path.moveTo(x + check * 0.15, y + check * 0.52);
++		path.lineTo(x + check * 0.4, y + check * 0.76);
++		path.lineTo(x + check * 0.88, y + check * 0.26);
++		p.drawPath(path);
++	}
++}
++
++void ShowHistoryBox(not_null<Window::SessionController*> controller) {
++	const auto session = &controller->session();
++	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
++		box->setTitle(rpl::single(Tr(u"Chat history"_q)));
++		box->setWidth(st::boxWideWidth);
++		const auto list = box->addRow(
++			object_ptr<Ui::VerticalLayout>(box),
++			QMargins());
++		const auto rebuild = [=] {
++			list->clear();
++			const auto &runner = Runner::For(session);
++			const auto current = runner.currentConversation();
++			const auto &conversations = runner.conversations();
++			if (conversations.empty()) {
++				list->add(
++					object_ptr<Ui::FlatLabel>(
++						list,
++						Tr(u"No saved chats yet"_q),
++						st::boxDividerLabel),
++					st::boxRowPadding + QMargins(
++						0,
++						st::boxLittleSkip,
++						0,
++						st::boxLittleSkip));
++			}
++			for (const auto &conversation : conversations) {
++				const auto id = conversation.id;
++				const auto row = list->add(object_ptr<HistoryRow>(
++					list,
++					conversation,
++					(id == current)));
++				row->setClickedCallback([=] {
++					if (Runner::For(session).switchConversation(id)) {
++						box->closeBox();
++					} else {
++						controller->showToast(
++							Tr(u"Wait until the agent answers."_q));
++					}
++				});
++				row->removeRequests() | rpl::on_next([=] {
++					controller->show(Ui::MakeConfirmBox({
++						.text = Tr(u"Delete this chat with the agent?"_q),
++						.confirmed = [=](Fn<void()> close) {
++							if (!Runner::For(session).removeConversation(id)) {
++								controller->showToast(
++									Tr(u"Wait until the agent answers."_q));
++							}
++							close();
++						},
++						.confirmText = Tr(u"Delete"_q),
++						.confirmStyle = &st::attentionBoxButton,
++					}));
++				}, row->lifetime());
++			}
++			list->resizeToWidth(st::boxWideWidth);
++		};
++		rebuild();
++		Runner::For(
++			session
++		).store().conversationsChanges() | rpl::on_next([=] {
++			crl::on_main(box, rebuild);
++		}, box->lifetime());
++		box->addButton(rpl::single(Tr(u"Close"_q)), [=] {
++			box->closeBox();
++		});
++		box->addLeftButton(rpl::single(Tr(u"New chat"_q)), [=] {
++			StartNewChat(controller);
++			box->closeBox();
++		});
++	}));
++}
++
+ class Memento final : public Window::SectionMemento {
+ public:
+ 	object_ptr<Window::SectionWidget> createWidget(
+@@ -79,6 +263,7 @@ private:
+ 
+ 	const not_null<Window::SessionController*> _controller;
+ 	object_ptr<Ui::IconButton> _back;
++	object_ptr<PaintedButton> _newChat;
+ 	object_ptr<PaintedButton> _settings;
+ 	object_ptr<Ui::IconButton> _menu;
+ 	base::unique_qptr<Ui::PopupMenu> _popup;
+@@ -91,6 +276,12 @@ TopBar::TopBar(
+ : RpWidget(parent)
+ , _controller(controller)
+ , _back(this, st::historyTopBarBack)
++, _newChat(this, [](QPainter &p, QRect rect, bool over) {
++	st::menuIconEdit.paintInCenter(
++		p,
++		rect,
++		over ? st::menuIconFgOver->c : st::menuIconFg->c);
++})
+ , _settings(this, [](QPainter &p, QRect rect, bool over) {
+ 	st::menuIconSettings.paintInCenter(
+ 		p,
+@@ -101,6 +292,10 @@ TopBar::TopBar(
+ 	_back->setClickedCallback([=] {
+ 		controller->showBackFromStack();
+ 	});
++	_newChat->resize(CardScaled(44), st::topBarHeight);
++	_newChat->setClickedCallback([=] {
++		StartNewChat(controller);
++	});
+ 	_settings->resize(CardScaled(44), st::topBarHeight);
+ 	_settings->setClickedCallback([=] {
+ 		ShowAgentSettings(controller);
+@@ -129,6 +324,10 @@ void TopBar::layout(int width) {
+ 		_menu->width(),
+ 		(st::topBarHeight - _settings->height()) / 2,
+ 		width);
++	_newChat->moveToRight(
++		_menu->width() + _settings->width(),
++		(st::topBarHeight - _newChat->height()) / 2,
++		width);
+ }
+ 
+ void TopBar::paintEvent(QPaintEvent *e) {
+@@ -145,7 +344,11 @@ void TopBar::paintEvent(QPaintEvent *e) {
+ 	const auto font = CardFont(15, true);
+ 	const auto textLeft = left + icon + CardScaled(10);
+ 	const auto available = std::max(
+-		width() - textLeft - _menu->width() - _settings->width(),
++		width()
++			- textLeft
++			- _menu->width()
++			- _settings->width()
++			- _newChat->width(),
+ 		0);
+ 	p.setFont(font);
+ 	p.setPen(st::dialogsNameFg);
+@@ -160,17 +363,12 @@ void TopBar::showMenu() {
+ 	_popup = base::make_unique_q<Ui::PopupMenu>(
+ 		this,
+ 		st::popupMenuWithIcons);
+-	_popup->addAction(Tr(u"Clear the conversation"_q), [=] {
+-		controller->show(Ui::MakeConfirmBox({
+-			.text = Tr(u"Clear the conversation with the agent?"_q),
+-			.confirmed = [=](Fn<void()> close) {
+-				Runner::For(&controller->session()).clear();
+-				close();
+-			},
+-			.confirmText = Tr(u"Clear"_q),
+-			.confirmStyle = &st::attentionBoxButton,
+-		}));
+-	}, &st::menuIconClear);
++	_popup->addAction(Tr(u"New chat"_q), [=] {
++		StartNewChat(controller);
++	}, &st::menuIconEdit);
++	_popup->addAction(Tr(u"Chat history"_q), [=] {
++		ShowHistoryBox(controller);
++	}, &st::menuIconChatBubble);
+ 	_popup->addAction(Tr(u"Agent settings"_q), [=] {
+ 		ShowAgentSettings(controller);
+ 	}, &st::menuIconSettings);
+diff --git a/Telegram/SourceFiles/tele/agent/agent_store.cpp b/Telegram/SourceFiles/tele/agent/agent_store.cpp
+index 73d1ec533e08ebfc64f5e3f8cbbd755e7060a2d0..0edffdbb33642088628cbd1e5ec8fb7ca1669610 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_store.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_store.cpp
+@@ -7,8 +7,10 @@
+ #include "tele/tele_lowercase.h"
+ #include "tele/tele_options.h"
+ 
++#include <QtCore/QFile>
+ #include <QtCore/QFileInfo>
+ #include <QtCore/QJsonDocument>
++#include <QtCore/QUuid>
+ 
+ namespace Tele::Agent {
+ namespace {
+@@ -16,7 +18,10 @@ namespace {
+ using namespace Storage::details;
+ 
+ constexpr auto kMagic = quint32(0x6d616461);
+-constexpr auto kVersion = qint32(1);
++constexpr auto kVersion = qint32(2);
++constexpr auto kConversationMagic = quint32(0x6d616463);
++constexpr auto kConversationVersion = qint32(1);
++constexpr auto kMaxConversations = 500;
+ constexpr auto kMaxMessages = 400;
+ constexpr auto kMaxBytes = 32 * 1024 * 1024;
+ constexpr auto kMaxImageMessages = 6;
+@@ -29,6 +34,22 @@ constexpr auto kMaxImageMessages = 6;
+ 	return base::options::lookup<bool>(id).value();
+ }
+ 
++[[nodiscard]] QString NewConversationId() {
++	return QUuid::createUuid().toString(QUuid::Id128).left(16);
++}
++
++[[nodiscard]] bool GoodConversationId(const QString &id) {
++	if (id.isEmpty() || id.size() > 32) {
++		return false;
++	}
++	for (const auto ch : id) {
++		if (!ch.isLetterOrNumber() || ch.unicode() > 127) {
++			return false;
++		}
++	}
++	return true;
++}
++
+ } // namespace
+ 
+ Store::Store(not_null<Main::Session*> session)
+@@ -69,6 +90,91 @@ const std::vector<Message> &Store::messages() const {
+ 	return _messages;
+ }
+ 
++const std::vector<Conversation> &Store::conversations() const {
++	return _conversations;
++}
++
++QString Store::currentConversation() const {
++	return _current;
++}
++
++void Store::startConversation() {
++	if (_messages.empty() && !_current.isEmpty()) {
++		return;
++	}
++	_current = NewConversationId();
++	_messages.clear();
++	write();
++	_conversationsChanges.fire({});
++}
++
++void Store::switchConversation(const QString &id) {
++	if (id == _current || !GoodConversationId(id)) {
++		return;
++	}
++	_current = id;
++	_messages.clear();
++	readConversation();
++	write();
++	_conversationsChanges.fire({});
++}
++
++void Store::removeConversation(const QString &id) {
++	const auto i = ranges::find(_conversations, id, &Conversation::id);
++	if (i != end(_conversations)) {
++		_conversations.erase(i);
++	}
++	deleteConversationFile(id);
++	if (id == _current) {
++		_messages.clear();
++		if (!_conversations.empty()) {
++			_current = _conversations.front().id;
++			readConversation();
++		} else {
++			_current = NewConversationId();
++		}
++	}
++	write();
++	_conversationsChanges.fire({});
++}
++
++rpl::producer<> Store::conversationsChanges() const {
++	return _conversationsChanges.events();
++}
++
++void Store::updateIndex() {
++	const auto i = ranges::find(_conversations, _current, &Conversation::id);
++	if (_messages.empty()) {
++		if (i != end(_conversations)) {
++			_conversations.erase(i);
++		}
++		deleteConversationFile(_current);
++		return;
++	}
++	auto title = ConversationTitle(_messages);
++	const auto updated = TimeId(_messages.back().date);
++	if (i != end(_conversations)) {
++		i->title = std::move(title);
++		i->updated = updated;
++	} else {
++		_conversations.push_back({
++			.id = _current,
++			.title = std::move(title),
++			.updated = updated,
++		});
++	}
++	ranges::stable_sort(
++		_conversations,
++		std::greater<>(),
++		&Conversation::updated);
++	if (int(_conversations.size()) > kMaxConversations) {
++		for (auto j = kMaxConversations; j != int(_conversations.size()); ++j) {
++			deleteConversationFile(_conversations[j].id);
++		}
++		_conversations.resize(kMaxConversations);
++	}
++}
++
+ void Store::setMessages(std::vector<Message> messages) {
+ 	if (int(messages.size()) > kMaxMessages) {
+ 		messages.erase(
+@@ -85,7 +191,15 @@ void Store::setMessages(std::vector<Message> messages) {
+ 		}
+ 	}
+ 	_messages = std::move(messages);
++	if (_current.isEmpty()) {
++		_current = NewConversationId();
++	}
++	updateIndex();
++	if (!_messages.empty()) {
++		writeConversation();
++	}
+ 	write();
++	_conversationsChanges.fire({});
+ }
+ 
+ bool Store::chatPinned() const {
+@@ -118,6 +232,67 @@ QString Store::folder() const {
+ 	return QFileInfo(support).absolutePath() + '/';
+ }
+ 
++QString Store::conversationName(const QString &id) const {
++	return u"tele_agent_"_q + id;
++}
++
++void Store::readConversation() {
++	if (!GoodConversationId(_current)) {
++		return;
++	}
++	auto file = FileReadDescriptor();
++	const auto key = _session->local().peekLegacyLocalKey();
++	if (!key
++		|| !ReadEncryptedFile(file, conversationName(_current), folder(), key)) {
++		return;
++	}
++	auto magic = quint32();
++	auto version = qint32();
++	auto owner = quint64();
++	auto blob = QByteArray();
++	file.stream >> magic >> version >> owner >> blob;
++	if (file.stream.status() != QDataStream::Ok
++		|| magic != kConversationMagic
++		|| version != kConversationVersion
++		|| owner != _session->uniqueId()
++		|| blob.size() > kMaxBytes) {
++		return;
++	}
++	const auto document = QJsonDocument::fromJson(blob);
++	if (document.isArray()) {
++		_messages = ParseMessages(document.array());
++	}
++}
++
++void Store::writeConversation() const {
++	const auto key = _session->local().peekLegacyLocalKey();
++	if (!key || !GoodConversationId(_current)) {
++		return;
++	}
++	const auto blob = QJsonDocument(
++		SerializeMessages(_messages)
++	).toJson(QJsonDocument::Compact);
++	auto data = EncryptedDescriptor(
++		sizeof(quint32) * 2 + sizeof(quint64) + sizeof(quint32) + blob.size());
++	data.stream
++		<< kConversationMagic
++		<< kConversationVersion
++		<< quint64(_session->uniqueId())
++		<< blob;
++	auto file = FileWriteDescriptor(conversationName(_current), folder());
++	file.writeEncrypted(data, key);
++}
++
++void Store::deleteConversationFile(const QString &id) const {
++	if (!GoodConversationId(id)) {
++		return;
++	}
++	const auto base = folder() + conversationName(id);
++	for (const auto suffix : { QChar('s'), QChar('0'), QChar('1') }) {
++		QFile::remove(base + suffix);
++	}
++}
++
+ void Store::read() {
+ 	auto file = FileReadDescriptor();
+ 	const auto key = _session->local().peekLegacyLocalKey();
+@@ -131,7 +306,8 @@ void Store::read() {
+ 	file.stream >> magic >> version >> owner >> blob;
+ 	if (file.stream.status() != QDataStream::Ok
+ 		|| magic != kMagic
+-		|| version != kVersion
++		|| version < 1
++		|| version > kVersion
+ 		|| owner != _session->uniqueId()
+ 		|| blob.size() > kMaxBytes) {
+ 		return;
+@@ -148,8 +324,41 @@ void Store::read() {
+ 			_keys[i.key()] = value;
+ 		}
+ 	}
+-	_messages = ParseMessages(object.value(u"messages"_q).toArray());
+ 	_chatPinned = object.value(u"chatPinned"_q).toBool();
++	for (const auto &value : object.value(u"conversations"_q).toArray()) {
++		const auto entry = value.toObject();
++		auto conversation = Conversation{
++			.id = entry.value(u"id"_q).toString(),
++			.title = entry.value(u"title"_q).toString(),
++			.updated = TimeId(entry.value(u"updated"_q).toDouble()),
++		};
++		if (GoodConversationId(conversation.id)
++			&& !ranges::contains(
++				_conversations,
++				conversation.id,
++				&Conversation::id)) {
++			_conversations.push_back(std::move(conversation));
++		}
++	}
++	ranges::stable_sort(
++		_conversations,
++		std::greater<>(),
++		&Conversation::updated);
++	_current = object.value(u"current"_q).toString();
++	if (!GoodConversationId(_current)) {
++		_current = _conversations.empty()
++			? NewConversationId()
++			: _conversations.front().id;
++	}
++	const auto legacy = ParseMessages(object.value(u"messages"_q).toArray());
++	if (!legacy.empty()) {
++		_current = NewConversationId();
++		_messages = legacy;
++		updateIndex();
++		writeConversation();
++	} else {
++		readConversation();
++	}
+ 	for (const auto &value : object.value(u"autoReplies"_q).toArray()) {
+ 		const auto entry = value.toObject();
+ 		auto reply = AutoReply{
+@@ -171,6 +380,9 @@ void Store::read() {
+ 			_autoReplies.push_back(std::move(reply));
+ 		}
+ 	}
++	if (object.contains(u"messages"_q)) {
++		write();
++	}
+ }
+ 
+ void Store::write() const {
+@@ -193,9 +405,18 @@ void Store::write() const {
+ 			{ u"stopPhrases"_q, QJsonArray::fromStringList(reply.stopPhrases) },
+ 		});
+ 	}
++	auto conversations = QJsonArray();
++	for (const auto &conversation : _conversations) {
++		conversations.append(QJsonObject{
++			{ u"id"_q, conversation.id },
++			{ u"title"_q, conversation.title },
++			{ u"updated"_q, double(conversation.updated) },
++		});
++	}
+ 	const auto blob = QJsonDocument(QJsonObject{
+ 		{ u"keys"_q, keys },
+-		{ u"messages"_q, SerializeMessages(_messages) },
++		{ u"conversations"_q, conversations },
++		{ u"current"_q, _current },
+ 		{ u"autoReplies"_q, replies },
+ 		{ u"chatPinned"_q, _chatPinned },
+ 	}).toJson(QJsonDocument::Compact);
+diff --git a/Telegram/SourceFiles/tele/agent/agent_store.h b/Telegram/SourceFiles/tele/agent/agent_store.h
+index ef823c95d695db90083b67b2c3c7cba472405594..7dc116e070c93a57670eebd68ea1f691bdc60704 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_store.h
++++ b/Telegram/SourceFiles/tele/agent/agent_store.h
+@@ -17,6 +17,12 @@ struct AutoReply {
+ 	QStringList stopPhrases;
+ };
+ 
++struct Conversation {
++	QString id;
++	QString title;
++	TimeId updated = 0;
++};
++
+ [[nodiscard]] QStringList DefaultStopPhrases();
+ 
+ class Store final {
+@@ -29,6 +35,13 @@ public:
+ 	[[nodiscard]] const std::vector<Message> &messages() const;
+ 	void setMessages(std::vector<Message> messages);
+ 
++	[[nodiscard]] const std::vector<Conversation> &conversations() const;
++	[[nodiscard]] QString currentConversation() const;
++	void startConversation();
++	void switchConversation(const QString &id);
++	void removeConversation(const QString &id);
++	[[nodiscard]] rpl::producer<> conversationsChanges() const;
++
+ 	[[nodiscard]] bool chatPinned() const;
+ 	void setChatPinned(bool pinned);
+ 
+@@ -38,15 +51,23 @@ public:
+ 
+ private:
+ 	[[nodiscard]] QString folder() const;
++	[[nodiscard]] QString conversationName(const QString &id) const;
+ 	void read();
+ 	void write() const;
++	void readConversation();
++	void writeConversation() const;
++	void deleteConversationFile(const QString &id) const;
++	void updateIndex();
+ 
+ 	const not_null<Main::Session*> _session;
+ 	std::map<QString, QString> _keys;
+ 	std::vector<Message> _messages;
++	std::vector<Conversation> _conversations;
++	QString _current;
+ 	std::vector<AutoReply> _autoReplies;
+ 	bool _chatPinned = false;
+ 	rpl::event_stream<> _autoRepliesChanges;
++	rpl::event_stream<> _conversationsChanges;
+ 
+ };
+ 
+diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+index 62a16a0cba788be683200ff02cba0a4eaed1b660..790626132a44a0d343a22c3d87b6e1a4633a0be2 100644
+--- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
++++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+@@ -164,6 +164,13 @@ void TestAgentProtocol() {
+ 	Require(openaiModels[0].id == QStringLiteral("a") && openaiModels[1].id == QStringLiteral("b") && openaiModels[2].id == QStringLiteral("c"), "openai models sorted");
+ 	Require(ParseModelPage(QByteArrayLiteral("nope")).models.empty(), "bad models page");
+ 
++	auto first = MakeMessage(Role::Assistant, QStringLiteral("hello"));
++	auto asked = MakeMessage(Role::User, QStringLiteral("  what did\nI miss  in chats  "));
++	Require(ConversationTitle({ first, asked }) == QStringLiteral("what did I miss in chats"), "conversation title from first question");
++	Require(ConversationTitle({ first }).isEmpty(), "no title without a question");
++	const auto title = ConversationTitle({ MakeMessage(Role::User, QString(80, QChar('a'))) });
++	Require(title.size() == 61 && title.endsWith(QChar(0x2026)), "long conversation title cut");
++
+ 	auto sse = SseParser();
+ 	auto payloads = sse.feed(QByteArrayLiteral("event: x\r\ndata: {\"a\":1}\r\n\r\ndata:"));
+ 	Require(payloads.size() == 1 && payloads[0] == QByteArrayLiteral("{\"a\":1}"), "sse line");
