@@ -5,23 +5,36 @@ Subject: [PATCH] feat: clicking a mad badge shows its name and description in
  a tooltip
 
 ---
- Telegram/CMakeLists.txt                       |   2 -
+ Telegram/CMakeLists.txt                       |   4 +-
+ .../dialogs/dialogs_inner_widget.cpp          |   4 +-
+ .../view/history_view_top_bar_widget.cpp      |   2 +-
  .../SourceFiles/tele/tele_mad_badge_card.cpp  | 563 ------------------
  .../SourceFiles/tele/tele_mad_badge_card.h    |  20 -
- Telegram/SourceFiles/tele/tele_mad_badges.cpp | 167 ++++--
+ .../tele/tele_mad_badge_tooltip.cpp           | 396 ++++++++++++
+ .../SourceFiles/tele/tele_mad_badge_tooltip.h |  11 +
+ Telegram/SourceFiles/tele/tele_mad_badges.cpp |  65 +-
+ Telegram/SourceFiles/tele/tele_mad_badges.h   |   6 +-
  .../SourceFiles/tele/tele_mad_registry.cpp    |  70 +++
  Telegram/SourceFiles/tele/tele_mad_registry.h |   4 +
  .../tele/tests/mad_registry_tests.cpp         |   8 +
- 7 files changed, 210 insertions(+), 624 deletions(-)
+ Telegram/SourceFiles/ui/unread_badge.cpp      |   4 +-
+ Telegram/SourceFiles/ui/unread_badge.h        |   2 +-
+ 14 files changed, 522 insertions(+), 637 deletions(-)
  delete mode 100644 Telegram/SourceFiles/tele/tele_mad_badge_card.cpp
  delete mode 100644 Telegram/SourceFiles/tele/tele_mad_badge_card.h
+ create mode 100644 Telegram/SourceFiles/tele/tele_mad_badge_tooltip.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_mad_badge_tooltip.h
 
 diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
-index 48da1dd3cf71e0cdfe0fa0dec4a4ca68b221e461..05826320e3fc98a0a770865d050de4c15ab8538b 100644
+index 48da1dd3cf71e0cdfe0fa0dec4a4ca68b221e461..fe25c314f366147bbfdfa7f2699cac2e70ce272f 100644
 --- a/Telegram/CMakeLists.txt
 +++ b/Telegram/CMakeLists.txt
-@@ -2658,8 +2658,6 @@ PRIVATE
+@@ -2656,10 +2656,10 @@ PRIVATE
+     tele/tele_mad_registry.cpp
+     tele/tele_translations.cpp
      tele/tele_mad_registry.h
++    tele/tele_mad_badge_tooltip.cpp
++    tele/tele_mad_badge_tooltip.h
      tele/tele_mad_badges.cpp
      tele/tele_mad_badges.h
 -    tele/tele_mad_badge_card.cpp
@@ -29,6 +42,41 @@ index 48da1dd3cf71e0cdfe0fa0dec4a4ca68b221e461..05826320e3fc98a0a770865d050de4c1
      tele/tele_single_paths.cpp
      tele/tele_single_paths.h
      tele/tele_wav_music.cpp
+diff --git a/Telegram/SourceFiles/dialogs/dialogs_inner_widget.cpp b/Telegram/SourceFiles/dialogs/dialogs_inner_widget.cpp
+index 867f6edff4af375b58900be41531462c88ef768e..833822843ee042bc35e3ad95025bf9967e6613e8 100644
+--- a/Telegram/SourceFiles/dialogs/dialogs_inner_widget.cpp
++++ b/Telegram/SourceFiles/dialogs/dialogs_inner_widget.cpp
+@@ -2581,7 +2581,7 @@ void InnerWidget::mousePressEvent(QMouseEvent *e) {
+ 		const auto origin = e->pos() - QPoint(0, dialogsOffset() + _selected->top());
+ 		const auto &badge = _selected->entry()->chatListPeerBadge();
+ 		if (badge.madBadgeRect().contains(origin)) {
+-			badge.showMadBadge();
++			badge.showMadBadge(this, badge.madBadgeRect().translated(e->pos() - origin));
+ 			return;
+ 		}
+ 	}
+@@ -2590,7 +2590,7 @@ void InnerWidget::mousePressEvent(QMouseEvent *e) {
+ 		const auto origin = e->pos() - QPoint(0, filteredOffset() + result.top);
+ 		const auto &badge = result.row->entry()->chatListPeerBadge();
+ 		if (badge.madBadgeRect().contains(origin)) {
+-			badge.showMadBadge();
++			badge.showMadBadge(this, badge.madBadgeRect().translated(e->pos() - origin));
+ 			return;
+ 		}
+ 	}
+diff --git a/Telegram/SourceFiles/history/view/history_view_top_bar_widget.cpp b/Telegram/SourceFiles/history/view/history_view_top_bar_widget.cpp
+index e95ec8c29031bf488236b3c54d7d5c4514513cfe..68d1923c4e086c6d72dbd6223b2f426572f15aa7 100644
+--- a/Telegram/SourceFiles/history/view/history_view_top_bar_widget.cpp
++++ b/Telegram/SourceFiles/history/view/history_view_top_bar_widget.cpp
+@@ -867,7 +867,7 @@ QRect TopBarWidget::getMembersShowAreaGeometry() const {
+ 
+ void TopBarWidget::mousePressEvent(QMouseEvent *e) {
+ 	if (e->button() == Qt::LeftButton && _titleBadge.madBadgeRect().contains(e->pos())) {
+-		_titleBadge.showMadBadge();
++		_titleBadge.showMadBadge(this, _titleBadge.madBadgeRect());
+ 		return;
+ 	}
+ 	const auto handleClick = (e->button() == Qt::LeftButton)
 diff --git a/Telegram/SourceFiles/tele/tele_mad_badge_card.cpp b/Telegram/SourceFiles/tele/tele_mad_badge_card.cpp
 deleted file mode 100644
 index eb4642f2c72090174b320d7e9003e7cbebb2a515..0000000000000000000000000000000000000000
@@ -624,48 +672,440 @@ index 539b0ed227ab59a61919e8df60ecfcc0f68736f3..00000000000000000000000000000000
 -void ShowMadBadgeCard(MadBadgeCardData data);
 -
 -}
+diff --git a/Telegram/SourceFiles/tele/tele_mad_badge_tooltip.cpp b/Telegram/SourceFiles/tele/tele_mad_badge_tooltip.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..d1766a9f3f4910cd6e967c925f7d4d6b798c9f6b
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_mad_badge_tooltip.cpp
+@@ -0,0 +1,396 @@
++#include "tele/tele_mad_badge_tooltip.h"
++
++#include "base/event_filter.h"
++#include "base/timer.h"
++#include "ui/effects/animations.h"
++#include "ui/image/image_prepare.h"
++#include "ui/painter.h"
++#include "ui/rp_widget.h"
++#include "ui/text/text.h"
++#include "styles/style_basic.h"
++
++#include <QtCore/QCoreApplication>
++#include <QtCore/QPointer>
++#include <QtGui/QCursor>
++#include <QtGui/QGuiApplication>
++#include <QtGui/QPainterPath>
++#include <QtGui/QScreen>
++#include <QtWidgets/QApplication>
++
++namespace Tele {
++namespace {
++
++constexpr auto kShowDuration = crl::time(400);
++constexpr auto kFadeInDuration = crl::time(200);
++constexpr auto kHideDuration = crl::time(200);
++constexpr auto kShowFor = crl::time(4000);
++constexpr auto kIgnoreInputFor = crl::time(150);
++constexpr auto kMinScale = 0.01;
++constexpr auto kTextOpacity = 0.75;
++
++[[nodiscard]] float64 Spring(float64 t) {
++	constexpr auto s = 0.9;
++	const auto u = t - 1.;
++	return u * u * ((s + 1.) * u + s) + 1.;
++}
++
++[[nodiscard]] style::TextStyle TextStyleOf(int size, bool semibold) {
++	const auto &font = semibold ? st::semiboldFont : st::normalFont;
++	auto result = st::defaultTextStyle;
++	result.font = style::font(
++		style::ConvertScale(size),
++		font->flags(),
++		font->family());
++	return result;
++}
++
++[[nodiscard]] QPainterPath TailPath(
++		float64 tipX,
++		float64 tipY,
++		float64 baseY,
++		float64 width) {
++	const auto half = width / 2.;
++	auto result = QPainterPath();
++	result.moveTo(tipX - half, baseY);
++	result.cubicTo(
++		tipX - half * 0.5,
++		baseY,
++		tipX - half * 0.2,
++		tipY,
++		tipX,
++		tipY);
++	result.cubicTo(
++		tipX + half * 0.2,
++		tipY,
++		tipX + half * 0.5,
++		baseY,
++		tipX + half,
++		baseY);
++	result.closeSubpath();
++	return result;
++}
++
++class BadgeTooltip final : public Ui::RpWidget {
++public:
++	BadgeTooltip(
++		const QString &title,
++		const QString &description,
++		QWidget *anchor,
++		QRect anchorRect);
++
++	void hideAnimated();
++
++protected:
++	void paintEvent(QPaintEvent *e) override;
++
++private:
++	void prepare(QWidget *anchor, QRect anchorRect);
++	[[nodiscard]] QImage backdrop(QWidget *window, QRect global) const;
++
++	style::TextStyle _titleStyle;
++	style::TextStyle _textStyle;
++	Ui::Text::String _title;
++	Ui::Text::String _text;
++	QImage _frame;
++	QRect _frameRect;
++	QPointF _tip;
++	crl::time _shown = 0;
++	crl::time _hiding = 0;
++	Ui::Animations::Basic _animation;
++	base::Timer _hideTimer;
++
++};
++
++QPointer<BadgeTooltip> Shown;
++
++BadgeTooltip::BadgeTooltip(
++	const QString &title,
++	const QString &description,
++	QWidget *anchor,
++	QRect anchorRect)
++: RpWidget(nullptr)
++, _titleStyle(TextStyleOf(14, true))
++, _textStyle(TextStyleOf(13, false))
++, _title(_titleStyle, title, kPlainTextOptions)
++, _text(_textStyle, description, kPlainTextOptions)
++, _hideTimer([=] { hideAnimated(); }) {
++	setWindowFlags(Qt::WindowFlags(Qt::FramelessWindowHint)
++		| Qt::BypassWindowManagerHint
++		| Qt::NoDropShadowWindowHint
++		| Qt::WindowTransparentForInput
++		| Qt::WindowDoesNotAcceptFocus
++		| Qt::ToolTip);
++	setAttribute(Qt::WA_NoSystemBackground);
++	setAttribute(Qt::WA_TranslucentBackground);
++	setAttribute(Qt::WA_TransparentForMouseEvents);
++	setAttribute(Qt::WA_ShowWithoutActivating);
++
++	prepare(anchor, anchorRect);
++
++	_animation.init([=](crl::time now) {
++		update();
++		if (_hiding) {
++			if (now - _hiding >= kHideDuration) {
++				deleteLater();
++				return false;
++			}
++			return true;
++		}
++		return (now - _shown) < kShowDuration;
++	});
++	base::install_event_filter(
++		this,
++		QCoreApplication::instance(),
++		[=](not_null<QEvent*> e) {
++			const auto type = e->type();
++			if ((type == QEvent::MouseButtonPress
++				|| type == QEvent::Wheel
++				|| type == QEvent::KeyPress
++				|| type == QEvent::ApplicationDeactivate)
++				&& (crl::now() - _shown >= kIgnoreInputFor)) {
++				hideAnimated();
++			}
++			return base::EventFilterResult::Continue;
++		});
++	_shown = crl::now();
++	show();
++	_animation.start();
++	_hideTimer.callOnce(kShowFor);
++}
++
++void BadgeTooltip::prepare(QWidget *anchor, QRect anchorRect) {
++	const auto margin = style::ConvertScale(8);
++	const auto paddingH = style::ConvertScale(11);
++	const auto paddingV = style::ConvertScale(8);
++	const auto skip = style::ConvertScale(4);
++	const auto maxWidth = style::ConvertScale(260);
++	const auto radius = style::ConvertScaleExact(12.5);
++	const auto tailWidth = style::ConvertScale(29);
++	const auto tailHeight = style::ConvertScale(10);
++	const auto distance = style::ConvertScale(10);
++	const auto edge = style::ConvertScale(12);
++	const auto belowLimit = style::ConvertScale(120);
++
++	const auto hasTitle = !_title.isEmpty();
++	const auto hasText = !_text.isEmpty();
++	const auto textWidth = std::clamp(
++		std::max(
++			hasTitle ? _title.maxWidth() : 0,
++			hasText ? _text.maxWidth() : 0),
++		1,
++		maxWidth - 2 * paddingH);
++	const auto titleHeight = hasTitle ? _title.countHeight(textWidth) : 0;
++	const auto textHeight = hasText ? _text.countHeight(textWidth) : 0;
++	const auto bubble = QSize(
++		textWidth + 2 * paddingH,
++		(titleHeight
++			+ ((hasTitle && hasText) ? skip : 0)
++			+ textHeight
++			+ 2 * paddingV));
++
++	const auto cursorSize = style::ConvertScale(16);
++	const auto target = anchor
++		? QRect(anchor->mapToGlobal(anchorRect.topLeft()), anchorRect.size())
++		: QRect(
++			QCursor::pos() - QPoint(cursorSize / 2, cursorSize / 2),
++			QSize(cursorSize, cursorSize));
++	const auto window = anchor
++		? anchor->window()
++		: [] {
++			const auto under = QApplication::widgetAt(QCursor::pos());
++			return under ? under->window() : nullptr;
++		}();
++	const auto screen = QGuiApplication::screenAt(target.center())
++		? QGuiApplication::screenAt(target.center())
++		: QGuiApplication::primaryScreen();
++	const auto available = screen
++		? screen->availableGeometry()
++		: QRect(target.center() - QPoint(1000, 1000), QSize(2000, 2000));
++	const auto windowTop = window
++		? window->mapToGlobal(QPoint()).y()
++		: available.y();
++
++	auto below = (target.y() - windowTop) < belowLimit;
++	const auto aboveTop = target.y() - distance - tailHeight - bubble.height();
++	if (!below && aboveTop < available.y() + edge) {
++		below = true;
++	}
++	const auto tipY = below
++		? (target.y() + target.height() + distance)
++		: (target.y() - distance);
++	const auto bubbleTop = below
++		? (tipY + tailHeight)
++		: (tipY - tailHeight - bubble.height());
++	const auto centerX = target.x() + target.width() / 2.;
++	const auto bubbleLeft = std::clamp(
++		int(std::round(centerX - bubble.width() / 2.)),
++		available.x() + edge,
++		std::max(
++			available.x() + edge,
++			available.x() + available.width() - edge - bubble.width()));
++	const auto tipMin = bubbleLeft + radius + tailWidth / 2.;
++	const auto tipMax = bubbleLeft + bubble.width() - radius - tailWidth / 2.;
++	const auto tipX = (tipMin <= tipMax)
++		? std::clamp(centerX, tipMin, tipMax)
++		: (bubbleLeft + bubble.width() / 2.);
++
++	const auto drawn = QRect(
++		bubbleLeft,
++		below ? tipY : bubbleTop,
++		bubble.width(),
++		bubble.height() + tailHeight);
++	setGeometry(drawn.marginsAdded({ margin, margin, margin, margin }));
++	_frameRect = QRect(QPoint(margin, margin), drawn.size());
++	_tip = QPointF(
++		margin + tipX - bubbleLeft,
++		margin + (below ? 0 : drawn.height()));
++
++	const auto ratio = style::DevicePixelRatio();
++	_frame = QImage(
++		drawn.size() * ratio,
++		QImage::Format_ARGB32_Premultiplied);
++	_frame.setDevicePixelRatio(ratio);
++	_frame.fill(Qt::transparent);
++
++	const auto bubbleY = below ? tailHeight : 0;
++	auto shape = QPainterPath();
++	shape.addRoundedRect(
++		QRectF(0, bubbleY, bubble.width(), bubble.height()),
++		radius,
++		radius);
++	const auto localTipX = tipX - bubbleLeft;
++	const auto tail = below
++		? TailPath(localTipX, 0., tailHeight + 1., tailWidth)
++		: TailPath(localTipX, drawn.height(), bubble.height() - 1., tailWidth);
++	shape = shape.united(tail);
++
++	const auto night = (st::windowBg->c.lightnessF() < 0.5);
++	const auto blurred = backdrop(window, drawn);
++	auto tint = night ? QColor(30, 30, 32) : QColor(0, 0, 0);
++	tint.setAlphaF(blurred.isNull() ? 0.92 : night ? 0.85 : 0.6);
++
++	auto p = QPainter(&_frame);
++	auto hq = PainterHighQualityEnabler(p);
++	if (!blurred.isNull()) {
++		p.setClipPath(shape);
++		p.drawImage(QRect(QPoint(), drawn.size()), blurred);
++		p.setClipping(false);
++	}
++	p.fillPath(shape, tint);
++
++	auto y = bubbleY + paddingV;
++	if (hasTitle) {
++		p.setPen(QColor(255, 255, 255));
++		_title.draw(p, {
++			.position = QPoint(paddingH, y),
++			.outerWidth = drawn.width(),
++			.availableWidth = textWidth,
++		});
++		y += titleHeight + (hasText ? skip : 0);
++	}
++	if (hasText) {
++		auto color = QColor(255, 255, 255);
++		color.setAlphaF(kTextOpacity);
++		p.setPen(color);
++		_text.draw(p, {
++			.position = QPoint(paddingH, y),
++			.outerWidth = drawn.width(),
++			.availableWidth = textWidth,
++		});
++	}
++}
++
++QImage BadgeTooltip::backdrop(QWidget *window, QRect global) const {
++	if (!window || !window->isVisible()) {
++		return QImage();
++	}
++	const auto origin = window->mapFromGlobal(global.topLeft());
++	const auto local = QRect(origin, global.size()).intersected(window->rect());
++	if (local.isEmpty()) {
++		return QImage();
++	}
++	auto image = window->grab(local).toImage();
++	if (image.isNull()) {
++		return QImage();
++	}
++	const auto factor = style::ConvertScale(4);
++	const auto small = QSize(
++		std::max(image.width() / factor, 1),
++		std::max(image.height() / factor, 1));
++	const auto blurred = Images::BlurLargeImage(
++		image.convertToFormat(QImage::Format_ARGB32_Premultiplied).scaled(
++			small,
++			Qt::IgnoreAspectRatio,
++			Qt::SmoothTransformation),
++		6);
++	const auto ratio = style::DevicePixelRatio();
++	auto result = QImage(
++		global.size() * ratio,
++		QImage::Format_ARGB32_Premultiplied);
++	result.fill(Qt::transparent);
++	auto p = QPainter(&result);
++	p.setRenderHint(QPainter::SmoothPixmapTransform);
++	p.drawImage(
++		QRect((local.topLeft() - origin) * ratio, local.size() * ratio),
++		blurred);
++	p.end();
++	return result;
++}
++
++void BadgeTooltip::hideAnimated() {
++	if (_hiding) {
++		return;
++	}
++	_hideTimer.cancel();
++	_hiding = crl::now();
++	_animation.start();
++}
++
++void BadgeTooltip::paintEvent(QPaintEvent *e) {
++	auto p = QPainter(this);
++	const auto now = crl::now();
++	auto scale = 1.;
++	auto opacity = 1.;
++	if (_hiding) {
++		const auto t = std::clamp(
++			(now - _hiding) / float64(kHideDuration),
++			0.,
++			1.);
++		opacity = 1. - t;
++		scale = 1. - (1. - kMinScale) * t;
++	} else {
++		const auto t = std::clamp(
++			(now - _shown) / float64(kShowDuration),
++			0.,
++			1.);
++		scale = kMinScale + (1. - kMinScale) * Spring(t);
++		opacity = std::clamp(
++			(now - _shown) / float64(kFadeInDuration),
++			0.,
++			1.);
++	}
++	p.setOpacity(opacity);
++	p.setRenderHint(QPainter::SmoothPixmapTransform);
++	p.translate(_tip);
++	p.scale(scale, scale);
++	p.translate(-_tip);
++	p.drawImage(_frameRect, _frame);
++}
++
++} // namespace
++
++void ShowMadBadgeTooltip(
++		const QString &title,
++		const QString &description,
++		QWidget *anchor,
++		QRect anchorRect) {
++	if (title.isEmpty() && description.isEmpty()) {
++		return;
++	}
++	if (const auto old = Shown.data()) {
++		delete old;
++	}
++	Shown = new BadgeTooltip(title, description, anchor, anchorRect);
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_mad_badge_tooltip.h b/Telegram/SourceFiles/tele/tele_mad_badge_tooltip.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..862e91ebfe7fedf2ffd9dfb96806b4c8d9e93134
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_mad_badge_tooltip.h
+@@ -0,0 +1,11 @@
++#pragma once
++
++namespace Tele {
++
++void ShowMadBadgeTooltip(
++	const QString &title,
++	const QString &description,
++	QWidget *anchor,
++	QRect anchorRect);
++
++} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_mad_badges.cpp b/Telegram/SourceFiles/tele/tele_mad_badges.cpp
-index f3d1e4dd8638e1d78e5583e0ea4123e691a44986..19bf9f4e782dc8d59397218350d84c1a05280dce 100644
+index f3d1e4dd8638e1d78e5583e0ea4123e691a44986..dcdaff7feb226278ea20feb722c86431a40c6c36 100644
 --- a/Telegram/SourceFiles/tele/tele_mad_badges.cpp
 +++ b/Telegram/SourceFiles/tele/tele_mad_badges.cpp
-@@ -1,5 +1,6 @@
- #include "tele/tele_mad_badges.h"
- 
-+#include "base/event_filter.h"
- #include "base/options.h"
- #include "boxes/abstract_box.h"
- #include "base/timer.h"
-@@ -16,7 +17,6 @@
+@@ -15,8 +15,8 @@
+ #include "main/main_session.h"
  #include "settings.h"
  #include "tele/tele_launch_flags.h"
++#include "tele/tele_mad_badge_tooltip.h"
  #include "tele/tele_lowercase.h"
 -#include "tele/tele_mad_badge_card.h"
  #include "tele/tele_options.h"
  #include "ui/boxes/confirm_box.h"
  #include "ui/abstract_button.h"
-@@ -25,11 +25,13 @@
- #include "ui/text/text.h"
- #include "ui/ui_utility.h"
- #include "ui/widgets/labels.h"
-+#include "ui/widgets/tooltip.h"
- #include "window/window_controller.h"
- #include "window/window_session_controller.h"
- #include "styles/style_layers.h"
- #include "styles/style_boxes.h"
- #include "styles/style_basic.h"
-+#include "styles/style_widgets.h"
- #include <QtCore/QCoreApplication>
- #include <QtCore/QCryptographicHash>
- #include <QtCore/QDateTime>
-@@ -39,6 +41,7 @@
- #include <QtCore/QSaveFile>
- #include <QtCore/QSet>
- #include <QtCore/QTimer>
-+#include <QtGui/QCursor>
- #include <QtGui/QDesktopServices>
- #include <QtGui/QPainter>
- #include <QtNetwork/QNetworkAccessManager>
-@@ -460,45 +463,131 @@ private:
+@@ -460,45 +460,14 @@ private:
  
  };
  
@@ -683,55 +1123,8 @@ index f3d1e4dd8638e1d78e5583e0ea4123e691a44986..19bf9f4e782dc8d59397218350d84c1a
 -	const auto my = context.other.value<ClickHandlerContext>();
 -	if (const auto controller = my.sessionWindow.get()) {
 -		return &controller->session();
-+QPointer<Ui::ImportantTooltip> ShownTooltip;
-+
-+[[nodiscard]] style::FlatLabel TooltipLabelStyle(int size, bool semibold) {
-+	const auto &font = semibold ? st::semiboldFont : st::normalFont;
-+	auto result = st::defaultImportantTooltipLabel;
-+	result.minWidth = 0;
-+	result.style.font = style::font(
-+		style::ConvertScale(size),
-+		font->flags(),
-+		font->family());
-+	return result;
-+}
-+
-+[[nodiscard]] const style::FlatLabel &TooltipTitleStyle() {
-+	static const auto result = TooltipLabelStyle(14, true);
-+	return result;
-+}
-+
-+[[nodiscard]] const style::FlatLabel &TooltipTextStyle() {
-+	static const auto result = TooltipLabelStyle(13, false);
-+	return result;
-+}
-+
-+[[nodiscard]] const style::ImportantTooltip &TooltipStyle() {
-+	static const auto result = [] {
-+		auto result = st::defaultImportantTooltip;
-+		result.padding = QMargins(
-+			style::ConvertScale(12),
-+			style::ConvertScale(7),
-+			style::ConvertScale(12),
-+			style::ConvertScale(8));
-+		return result;
-+	}();
-+	return result;
-+}
-+
-+void ShowBadge(const MadBadge &badge) {
-+	constexpr auto kTitleLimit = 40;
-+	constexpr auto kDescriptionLimit = 140;
-+	constexpr auto kShowFor = crl::time(4000);
-+	const auto title = MadBadgeTooltipText(badge.title, kTitleLimit, true);
-+	const auto description = MadBadgeTooltipText(
-+		badge.description,
-+		kDescriptionLimit,
-+		false);
-+	if (title.isEmpty() && description.isEmpty()) {
-+		return;
- 	}
- 	const auto window = Core::App().activeWindow();
+-	}
+-	const auto window = Core::App().activeWindow();
 -	const auto active = window ? window->sessionController() : nullptr;
 -	return active ? &active->session() : nullptr;
 -}
@@ -744,48 +1137,8 @@ index f3d1e4dd8638e1d78e5583e0ea4123e691a44986..19bf9f4e782dc8d59397218350d84c1a
 -	if (session) {
 -		if (const auto peer = session->data().peerLoaded(TargetPeer(target))) {
 -			holder = peer->name();
-+	const auto parent = window ? window->widget()->bodyWidget() : nullptr;
-+	if (!parent) {
-+		return;
-+	}
-+	if (const auto old = ShownTooltip.data()) {
-+		delete old;
-+	}
-+	auto content = object_ptr<Ui::RpWidget>(parent);
-+	const auto raw = content.data();
-+	const auto titleLabel = title.isEmpty()
-+		? nullptr
-+		: Ui::CreateChild<Ui::FlatLabel>(raw, title, TooltipTitleStyle());
-+	const auto textLabel = description.isEmpty()
-+		? nullptr
-+		: Ui::CreateChild<Ui::FlatLabel>(raw, description, TooltipTextStyle());
-+	if (textLabel) {
-+		auto color = st::importantTooltipFg->c;
-+		color.setAlphaF(color.alphaF() * 0.75);
-+		textLabel->setTextColorOverride(color);
-+	}
-+	auto width = 1;
-+	if (titleLabel) {
-+		width = std::max(width, titleLabel->textMaxWidth());
-+	}
-+	if (textLabel) {
-+		width = std::max(width, textLabel->textMaxWidth());
-+	}
-+	width = std::min(width, style::ConvertScale(260));
-+	auto top = 0;
-+	if (titleLabel) {
-+		titleLabel->resizeToWidth(width);
-+		titleLabel->moveToLeft(0, top);
-+		top += titleLabel->height();
-+	}
-+	if (textLabel) {
-+		if (titleLabel) {
-+			top += style::ConvertScale(2);
- 		}
-+		textLabel->resizeToWidth(width);
-+		textLabel->moveToLeft(0, top);
-+		top += textLabel->height();
- 	}
+-		}
+-	}
 -	const auto assignment = Store
 -		? Store->assignment(target)
 -		: std::optional<MadAssignment>();
@@ -794,55 +1147,45 @@ index f3d1e4dd8638e1d78e5583e0ea4123e691a44986..19bf9f4e782dc8d59397218350d84c1a
 -		.holder = holder,
 -		.expiresAt = assignment ? assignment->expiresAt : 0,
 -		.session = session,
-+	raw->resize(width, top);
-+	const auto tooltip = Ui::CreateChild<Ui::ImportantTooltip>(
-+		parent,
-+		std::move(content),
-+		TooltipStyle());
-+	ShownTooltip = tooltip;
-+	const auto cursor = parent->mapFromGlobal(QCursor::pos());
-+	const auto local = QPoint(
-+		std::clamp(cursor.x(), 0, parent->width()),
-+		std::clamp(cursor.y(), 0, parent->height()));
-+	const auto size = style::ConvertScale(16);
-+	tooltip->pointAt(
-+		QRect(local.x() - size / 2, local.y() - size / 2, size, size),
-+		(local.y() < style::ConvertScale(120))
-+			? RectPart::Bottom
-+			: RectPart::Top);
-+	tooltip->setHiddenCallback([=] {
-+		tooltip->deleteLater();
- 	});
-+	base::install_event_filter(
-+		tooltip,
-+		QCoreApplication::instance(),
-+		[=](not_null<QEvent*> e) {
-+			const auto type = e->type();
-+			if (type == QEvent::MouseButtonPress
-+				|| type == QEvent::Wheel
-+				|| type == QEvent::KeyPress) {
-+				tooltip->toggleAnimated(false);
-+			}
-+			return base::EventFilterResult::Continue;
-+		});
-+	tooltip->raise();
-+	tooltip->toggleAnimated(true);
-+	tooltip->hideAfter(kShowFor);
+-	});
++void ShowBadge(const MadBadge &badge, QWidget *anchor, QRect anchorRect) {
++	constexpr auto kTitleLimit = 40;
++	constexpr auto kDescriptionLimit = 140;
++	ShowMadBadgeTooltip(
++		MadBadgeTooltipText(badge.title, kTitleLimit, true),
++		MadBadgeTooltipText(badge.description, kDescriptionLimit, false),
++		anchor,
++		anchorRect);
  }
  
  }
-@@ -556,8 +645,8 @@ std::unique_ptr<Ui::Text::CustomEmoji> MakeMadBadgeObject(
+@@ -556,8 +525,12 @@ std::unique_ptr<Ui::Text::CustomEmoji> MakeMadBadgeObject(
  		value.mid(slash + 1).toString(), session, std::move(repaint), size);
  }
  
 -void ShowMadBadge(const MadBadge &badge, not_null<PeerData*> peer) {
 -	ShowBadge(badge, Target(peer), &peer->session());
-+void ShowMadBadge(const MadBadge &badge, not_null<PeerData*>) {
-+	ShowBadge(badge);
++void ShowMadBadge(
++		const MadBadge &badge,
++		not_null<PeerData*>,
++		QWidget *anchor,
++		QRect anchorRect) {
++	ShowBadge(badge, anchor, anchorRect);
  }
  
  QImage MadBadgeImage(const MadBadge &badge, int size) {
-@@ -620,10 +709,10 @@ std::shared_ptr<ClickHandler> MadBadgeLink(const EntityLinkData &data) {
+@@ -595,7 +568,9 @@ Ui::RpWidget *CreateMadBadgeWidget(not_null<QWidget*> parent,
+ 		}
+ 	}, button->lifetime());
+ 	button->setClickedCallback([=] {
+-		if (const auto badge = MadBadgeForPeer(peer)) ShowMadBadge(*badge, peer);
++		if (const auto badge = MadBadgeForPeer(peer)) {
++			ShowMadBadge(*badge, peer, button, button->rect());
++		}
+ 	});
+ 	MadBadgesChanges() | rpl::on_next(refresh, button->lifetime());
+ 	refresh();
+@@ -620,10 +595,10 @@ std::shared_ptr<ClickHandler> MadBadgeLink(const EntityLinkData &data) {
  	const auto target = value.left(slash);
  	const auto id = value.mid(slash + 1);
  	return std::make_shared<BadgeClickHandler>(Fn<void(ClickContext)>([=](
@@ -851,10 +1194,27 @@ index f3d1e4dd8638e1d78e5583e0ea4123e691a44986..19bf9f4e782dc8d59397218350d84c1a
  		if (Store && MadBadgesEnabled() && Store->assigned(target, id)) {
  			if (const auto badge = Store->badge(id)) {
 -				ShowBadge(*badge, target, SessionFrom(context));
-+				ShowBadge(*badge);
++				ShowBadge(*badge, nullptr, QRect());
  			}
  		}
  	}));
+diff --git a/Telegram/SourceFiles/tele/tele_mad_badges.h b/Telegram/SourceFiles/tele/tele_mad_badges.h
+index e3534d3cd1e3417679e1c6420eb6e578d3a404ab..4cb92417d839ab67ab9627598e3e53388969c842 100644
+--- a/Telegram/SourceFiles/tele/tele_mad_badges.h
++++ b/Telegram/SourceFiles/tele/tele_mad_badges.h
+@@ -34,7 +34,11 @@ void ClearMadBadges();
+ [[nodiscard]] std::shared_ptr<ClickHandler> MadBadgeLink(const EntityLinkData &data);
+ [[nodiscard]] std::shared_ptr<ClickHandler> MadBadgeTextLink(
+ 	const Ui::Text::String &text, QPoint point, int width, int lines = 1);
+-void ShowMadBadge(const MadBadge &badge, not_null<PeerData*> peer);
++void ShowMadBadge(
++	const MadBadge &badge,
++	not_null<PeerData*> peer,
++	QWidget *anchor = nullptr,
++	QRect anchorRect = QRect());
+ [[nodiscard]] QImage MadBadgeImage(const MadBadge &badge, int size);
+ [[nodiscard]] MadName MadNameStyle(PeerData *peer);
+ [[nodiscard]] Ui::RpWidget *CreateMadBadgeWidget(
 diff --git a/Telegram/SourceFiles/tele/tele_mad_registry.cpp b/Telegram/SourceFiles/tele/tele_mad_registry.cpp
 index 38c365f89771e7ea9cbd694f4fe8b3d1ad70302c..6ac8a51e5d0221b1b8664a8aca0f5e1ab3dde227 100644
 --- a/Telegram/SourceFiles/tele/tele_mad_registry.cpp
@@ -974,3 +1334,33 @@ index 8078213556aa54c381db69c2d753bf49adddf055..d7fdfea4f8007ea887ef30bca014e07e
  	std::puts("mad registry tests passed");
  	return 0;
  }
+diff --git a/Telegram/SourceFiles/ui/unread_badge.cpp b/Telegram/SourceFiles/ui/unread_badge.cpp
+index 72ad10a4305b6157d1590e3d3225e0f949173cfd..d481ee68d2a38bbe302c957f3b485b462794a76e 100644
+--- a/Telegram/SourceFiles/ui/unread_badge.cpp
++++ b/Telegram/SourceFiles/ui/unread_badge.cpp
+@@ -292,10 +292,10 @@ QRect PeerBadge::madBadgeRect() const {
+ 	return _madRect;
+ }
+ 
+-void PeerBadge::showMadBadge() const {
++void PeerBadge::showMadBadge(QWidget *anchor, QRect rect) const {
+ 	if (_madPeer) {
+ 		if (const auto badge = Tele::MadBadgeForPeer(_madPeer)) {
+-			Tele::ShowMadBadge(*badge, _madPeer);
++			Tele::ShowMadBadge(*badge, _madPeer, anchor, rect);
+ 		}
+ 	}
+ }
+diff --git a/Telegram/SourceFiles/ui/unread_badge.h b/Telegram/SourceFiles/ui/unread_badge.h
+index 7f06c8471561576d9e71bf78f8251d99c52b8c4c..6b482fa26d631f1fb2fbe980273eaffb0edf9cd3 100644
+--- a/Telegram/SourceFiles/ui/unread_badge.h
++++ b/Telegram/SourceFiles/ui/unread_badge.h
+@@ -77,7 +77,7 @@ public:
+ 	};
+ 	int drawGetWidth(Painter &p, Descriptor &&descriptor);
+ 	[[nodiscard]] QRect madBadgeRect() const;
+-	void showMadBadge() const;
++	void showMadBadge(QWidget *anchor = nullptr, QRect rect = QRect()) const;
+ 	[[nodiscard]] QRect emojiStatusRect() const;
+ 	void paintEmojiStatusFrame(QPainter &p, crl::time now, bool paused);
+ 	void paintEmojiStatusFrame(
