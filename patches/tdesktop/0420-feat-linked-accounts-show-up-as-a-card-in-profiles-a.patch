@@ -3011,7 +3011,7 @@ index cf79589dc7dc101628661ec6b715825104a1b9b2..825e75beaee0dbd8a62b9886401674d6
  	not_null<Window::SessionController*> controller);
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..8a822e0ec47feafff6ca54dc3c50aafdbcf5c0ec
+index 0000000000000000000000000000000000000000..998ecdfb0b362b838af171e5fd3b9df86f1b8475
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp
 @@ -0,0 +1,1387 @@
@@ -3591,8 +3591,8 @@ index 0000000000000000000000000000000000000000..8a822e0ec47feafff6ca54dc3c50aafd
 +				QRect rect,
 +				bool over) {
 +			PaintPlatformCard(p, rect, over, platform, status);
-+		card->show();
 +		});
++		card->show();
 +		card->setPointerCursor(platform.available || !accountId.isEmpty());
 +		card->setClickedCallback([=] {
 +			if (!accountId.isEmpty()) {
