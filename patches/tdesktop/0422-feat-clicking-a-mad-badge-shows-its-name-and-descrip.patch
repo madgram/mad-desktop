@@ -674,7 +674,7 @@ index 539b0ed227ab59a61919e8df60ecfcc0f68736f3..00000000000000000000000000000000
 -}
 diff --git a/Telegram/SourceFiles/tele/tele_mad_badge_tooltip.cpp b/Telegram/SourceFiles/tele/tele_mad_badge_tooltip.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..d1766a9f3f4910cd6e967c925f7d4d6b798c9f6b
+index 0000000000000000000000000000000000000000..0e812455238a30ca3276442f63988ab5edc33592
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_mad_badge_tooltip.cpp
 @@ -0,0 +1,396 @@
@@ -791,8 +791,8 @@ index 0000000000000000000000000000000000000000..d1766a9f3f4910cd6e967c925f7d4d6b
 +: RpWidget(nullptr)
 +, _titleStyle(TextStyleOf(14, true))
 +, _textStyle(TextStyleOf(13, false))
-+, _title(_titleStyle, title, kPlainTextOptions)
-+, _text(_textStyle, description, kPlainTextOptions)
++, _title(_titleStyle, title, kPlainTextOptions, 1)
++, _text(_textStyle, description, kPlainTextOptions, 1)
 +, _hideTimer([=] { hideAnimated(); }) {
 +	setWindowFlags(Qt::WindowFlags(Qt::FramelessWindowHint)
 +		| Qt::BypassWindowManagerHint
