@@ -1,0 +1,585 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 19:20:02 +0200
+Subject: [PATCH] feat: pick the ai agent's model from the provider's list
+
+---
+ Telegram/Resources/langs/mad_ru.json          |  12 +-
+ .../SourceFiles/settings/settings_tele.cpp    |  51 +++++++-
+ .../SourceFiles/tele/agent/agent_panel.cpp    | 121 ++++++++++++++++++
+ Telegram/SourceFiles/tele/agent/agent_panel.h |   1 +
+ .../SourceFiles/tele/agent/agent_protocol.cpp |  60 +++++++++
+ .../SourceFiles/tele/agent/agent_protocol.h   |  17 +++
+ .../SourceFiles/tele/agent/agent_runner.cpp   |  76 +++++++++++
+ .../SourceFiles/tele/agent/agent_runner.h     |   3 +
+ .../SourceFiles/tele/agent/agent_store.cpp    |  39 +++++-
+ Telegram/SourceFiles/tele/agent/agent_store.h |   2 +
+ Telegram/SourceFiles/tele/tele_options.cpp    |   2 +-
+ .../tele/tests/mad_logic_tests.cpp            |  13 ++
+ 12 files changed, 385 insertions(+), 12 deletions(-)
+
+diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
+index 3af185f0699c8d5f00d9434401bf4935f49673ec..7135193147f233bc75ceb2cfcac18a344f178ef9 100644
+--- a/Telegram/Resources/langs/mad_ru.json
++++ b/Telegram/Resources/langs/mad_ru.json
+@@ -2260,7 +2260,6 @@
+   "Check the key": "Проверить ключ",
+   "Choose a model in the agent settings.": "Выбери модель в настройках агента.",
+   "Clear the conversation": "Очистить диалог",
+-  "Empty uses the provider's default model.": "Пустое поле — модель провайдера по умолчанию.",
+   "For compatible providers, like a local server or a proxy.": "Для совместимых провайдеров, например своего сервера или прокси.",
+   "How the agent talks and what it keeps in mind.": "Как агент общается и что держит в голове.",
+   "Instructions": "Инструкции",
+@@ -2462,5 +2461,14 @@
+   "Anthropic": "Anthropic",
+   "OpenAI": "OpenAI",
+   "Typing…": "Печатает…",
+-  "Works with your own API key": "Работает на твоём API-ключе"
++  "Works with your own API key": "Работает на твоём API-ключе",
++  "Pick one from the provider's list or type any model.": "Выбери из списка провайдера или впиши любую модель.",
++  "Not selected": "Не выбрана",
++  "Manually": "Вручную",
++  "Model name": "Название модели",
++  "You can type any model, even if it isn't in the list.": "Можно вписать любую модель, даже если её нет в списке.",
++  "Available models": "Доступные модели",
++  "Loading the list of models…": "Загружаю список моделей…",
++  "Add an API key to load the list of models.": "Добавь API-ключ, чтобы загрузить список моделей.",
++  "The provider returned no models.": "Провайдер не вернул ни одной модели."
+ }
+diff --git a/Telegram/SourceFiles/settings/settings_tele.cpp b/Telegram/SourceFiles/settings/settings_tele.cpp
+index d2aa62561c87d97f899d2f9ba0de16be0b6f0178..d0fe93bf37aec09a777054d373e91bd193e6c50e 100644
+--- a/Telegram/SourceFiles/settings/settings_tele.cpp
++++ b/Telegram/SourceFiles/settings/settings_tele.cpp
+@@ -4561,11 +4561,48 @@ void FillMadAccounts(SectionBuilder &builder) {
+ 	});
+ }
+ 
++void AddAgentModelButton(SectionBuilder &builder) {
++	auto &option = base::options::lookup<QString>(
++		::Tele::kOptionAgentModel);
++	const auto controller = builder.controller();
++	const auto title = ::Tele::Tr(option.name());
++	const auto description = ::Tele::Tr(option.description());
++	auto label = rpl::combine(
++		::Tele::AgentProviderValue(),
++		rpl::single(rpl::empty) | rpl::then(option.changes())
++	) | rpl::map([](const QString &providerId, auto) {
++		using namespace ::Tele::Agent;
++		const auto provider = ProviderFromId(providerId);
++		const auto model = ModelFor(provider);
++		const auto value = model.isEmpty() ? DefaultModel(provider) : model;
++		return value.isEmpty()
++			? ::Tele::Tr(u"Not selected"_q)
++			: (value.size() > 40)
++			? (value.left(40) + QChar(0x2026))
++			: value;
++	});
++	const auto button = AddButton(builder, {
++		.id = option.id(),
++		.title = rpl::single(title),
++		.st = &st::settingsButtonNoIcon,
++		.label = std::move(label),
++		.onClick = [=] {
++			::Tele::Agent::ShowModelBox(controller);
++		},
++		.keywords = { description, u"agent"_q, u"модель"_q },
++	});
++	if (button) {
++		SetupLink(button, option.id());
++	}
++	AddAbout(builder, option.id(), description);
++}
++
+ void AddAgentTextButton(
+ 		SectionBuilder &builder,
+ 		const char id[],
+ 		const QString &empty,
+-		bool multiline) {
++		bool multiline,
++		rpl::producer<bool> shown = nullptr) {
+ 	const auto &option = base::options::lookup<QString>(id);
+ 	const auto controller = builder.controller();
+ 	const auto title = ::Tele::Tr(option.name());
+@@ -4579,6 +4616,7 @@ void AddAgentTextButton(
+ 			::Tele::Agent::ShowTextBox(controller, id, title, multiline);
+ 		},
+ 		.keywords = { description, u"agent"_q },
++		.shown = std::move(shown),
+ 	});
+ 	if (button) {
+ 		SetupLink(button, option.id());
+@@ -4982,16 +5020,15 @@ void FillAgentGeneral(SectionBuilder &builder) {
+ 		},
+ 		.keywords = { u"token"_q, u"api"_q, u"ключ"_q },
+ 	});
+-	AddAgentTextButton(
+-		builder,
+-		::Tele::kOptionAgentModel,
+-		u"Default"_q,
+-		false);
++	AddAgentModelButton(builder);
+ 	AddAgentTextButton(
+ 		builder,
+ 		::Tele::kOptionAgentBaseUrl,
+ 		u"Official"_q,
+-		false);
++		false,
++		::Tele::AgentProviderValue() | rpl::map([](const QString &id) {
++			return ::Tele::Agent::IsCustom(::Tele::Agent::ProviderFromId(id));
++		}));
+ 	AddButton(builder, {
+ 		.id = u"tele-agent-check"_q,
+ 		.title = rpl::single(::Tele::Tr(u"Check the key"_q)),
+diff --git a/Telegram/SourceFiles/tele/agent/agent_panel.cpp b/Telegram/SourceFiles/tele/agent/agent_panel.cpp
+index 4a62934b227812877a5f2a994de26e54f8e5b4e6..d425f6a6507fef7820595a7fd925074b098a8681 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_panel.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_panel.cpp
+@@ -11,7 +11,9 @@
+ #include "tele/tele_mad_links.h"
+ #include "tele/tele_options.h"
+ #include "ui/layers/generic_box.h"
++#include "ui/vertical_list.h"
+ #include "ui/widgets/buttons.h"
++#include "ui/widgets/checkbox.h"
+ #include "ui/widgets/fields/input_field.h"
+ #include "ui/widgets/fields/password_input.h"
+ #include "ui/widgets/labels.h"
+@@ -141,6 +143,125 @@ void ShowTextBox(
+ 	}));
+ }
+ 
++void ShowModelBox(not_null<Window::SessionController*> controller) {
++	const auto session = &controller->session();
++	const auto provider = CurrentProvider();
++	controller->show(Box([=](not_null<Ui::GenericBox*> box) {
++		struct State {
++			rpl::variable<QString> current;
++			std::shared_ptr<Ui::RadiobuttonGroup> group;
++			std::vector<ModelInfo> models;
++			Ui::VerticalLayout *list = nullptr;
++			Ui::FlatLabel *status = nullptr;
++			Ui::InputField *field = nullptr;
++			bool applying = false;
++		};
++		const auto state = box->lifetime().make_state<State>();
++		state->current = ModelFor(provider);
++		box->setTitle(rpl::single(Tr(u"Model"_q)));
++		box->setWidth(st::boxWideWidth);
++
++		Ui::AddSubsectionTitle(
++			box->verticalLayout(),
++			rpl::single(Tr(u"Manually"_q)));
++		state->field = box->addRow(object_ptr<Ui::InputField>(
++			box,
++			st::defaultInputField,
++			rpl::single(Tr(u"Model name"_q)),
++			state->current.current()));
++		box->addRow(
++			object_ptr<Ui::FlatLabel>(
++				box,
++				Tr(u"You can type any model, even if it isn't in the list."_q),
++				st::boxDividerLabel),
++			st::boxRowPadding + QMargins(0, st::boxLittleSkip, 0, 0));
++		state->field->changes() | rpl::on_next([=] {
++			if (state->applying) {
++				return;
++			}
++			const auto value = state->field->getLastText().trimmed();
++			SetModelFor(provider, value);
++			state->current = value;
++		}, state->field->lifetime());
++
++		Ui::AddSkip(box->verticalLayout());
++		Ui::AddSubsectionTitle(
++			box->verticalLayout(),
++			rpl::single(Tr(u"Available models"_q)));
++		state->status = box->addRow(object_ptr<Ui::FlatLabel>(
++			box,
++			Tr(u"Loading the list of models…"_q),
++			st::boxDividerLabel));
++		state->list = box->addRow(
++			object_ptr<Ui::VerticalLayout>(box),
++			QMargins());
++
++		const auto rebuild = [=] {
++			state->list->clear();
++			const auto &models = state->models;
++			const auto index = [=](const QString &id) {
++				const auto i = ranges::find(state->models, id, &ModelInfo::id);
++				return (i != end(state->models))
++					? int(i - begin(state->models))
++					: -1;
++			};
++			state->group = std::make_shared<Ui::RadiobuttonGroup>(
++				index(state->current.current()));
++			for (auto i = 0; i != int(models.size()); ++i) {
++				const auto &model = models[i];
++				const auto text = model.name.isEmpty()
++					? model.id
++					: (model.id + u" · "_q + model.name);
++				state->list->add(
++					object_ptr<Ui::Radiobutton>(
++						state->list,
++						state->group,
++						i,
++						text,
++						st::defaultBoxCheckbox),
++					st::boxRowPadding + QMargins(0, st::boxLittleSkip, 0, 0));
++			}
++			state->group->setChangedCallback([=](int value) {
++				if (value < 0 || value >= int(state->models.size())) {
++					return;
++				}
++				const auto id = state->models[value].id;
++				SetModelFor(provider, id);
++				if (state->field->getLastText().trimmed() != id) {
++					state->applying = true;
++					state->field->setText(id);
++					state->applying = false;
++				}
++				state->current = id;
++			});
++			state->current.changes() | rpl::on_next([=](const QString &id) {
++				state->group->setValue(index(id));
++			}, state->list->lifetime());
++			state->list->resizeToWidth(box->width());
++		};
++
++		Runner::For(session).fetchModels(provider, crl::guard(box, [=](
++				std::vector<ModelInfo> models,
++				QString error) {
++			if (!error.isEmpty()) {
++				state->status->setText(error);
++				return;
++			} else if (models.empty()) {
++				state->status->setText(Tr(u"The provider returned no models."_q));
++				return;
++			}
++			state->status->hide();
++			state->models = std::move(models);
++			rebuild();
++		}));
++
++		box->setFocusCallback([=] { state->field->setFocusFast(); });
++		box->addButton(rpl::single(Tr(u"Done"_q)), [=] {
++			box->closeBox();
++		});
++	}));
++}
++
+ void CheckKey(not_null<Window::SessionController*> controller) {
+ 	const auto weak = base::make_weak(controller);
+ 	Runner::For(&controller->session()).checkKey([=](QString error) {
+diff --git a/Telegram/SourceFiles/tele/agent/agent_panel.h b/Telegram/SourceFiles/tele/agent/agent_panel.h
+index ef9c5e897dae11e826095aa3ccf2f00433a594cc..3def1b78f9e31fce16b40adde9ba27e3307b90e1 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_panel.h
++++ b/Telegram/SourceFiles/tele/agent/agent_panel.h
+@@ -21,6 +21,7 @@ void ShowTextBox(
+ 	const char id[],
+ 	const QString &title,
+ 	bool multiline);
++void ShowModelBox(not_null<Window::SessionController*> controller);
+ void CheckKey(not_null<Window::SessionController*> controller);
+ [[nodiscard]] rpl::producer<QString> KeyStatusValue(
+ 	not_null<Window::SessionController*> controller);
+diff --git a/Telegram/SourceFiles/tele/agent/agent_protocol.cpp b/Telegram/SourceFiles/tele/agent/agent_protocol.cpp
+index ccffc2e4ec06305638df2e13cad08564b52d7f35..588f11bb720b670a7797854b531c9784cb6169df 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_protocol.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_protocol.cpp
+@@ -135,6 +135,66 @@ Message MakeMessage(Role role, const QString &text) {
+ 	return result;
+ }
+ 
++ModelPage ParseModelPage(const QByteArray &json) {
++	auto result = ModelPage();
++	const auto document = QJsonDocument::fromJson(json);
++	if (!document.isObject()) {
++		return result;
++	}
++	const auto object = document.object();
++	for (const auto &value : object.value(u"data"_s).toArray()) {
++		const auto entry = value.toObject();
++		const auto id = entry.value(u"id"_s).toString().trimmed();
++		if (id.isEmpty()) {
++			continue;
++		}
++		auto name = entry.value(u"display_name"_s).toString().trimmed();
++		if (name.isEmpty()) {
++			name = entry.value(u"name"_s).toString().trimmed();
++		}
++		result.models.push_back({
++			.id = id,
++			.name = (name == id) ? QString() : name,
++			.created = qint64(entry.value(u"created"_s).toDouble()),
++		});
++	}
++	result.hasMore = object.value(u"has_more"_s).toBool();
++	result.lastId = object.value(u"last_id"_s).toString();
++	if (result.lastId.isEmpty() && !result.models.empty()) {
++		result.lastId = result.models.back().id;
++	}
++	return result;
++}
++
++std::vector<ModelInfo> PreparedModels(
++		Provider provider,
++		std::vector<ModelInfo> list) {
++	constexpr auto kMaxModels = 400;
++	auto seen = QSet<QString>();
++	auto result = std::vector<ModelInfo>();
++	result.reserve(list.size());
++	for (auto &model : list) {
++		if (!seen.contains(model.id)) {
++			seen.insert(model.id);
++			result.push_back(std::move(model));
++		}
++	}
++	if (!UsesAnthropic(provider)) {
++		std::stable_sort(
++			begin(result),
++			end(result),
++			[](const ModelInfo &a, const ModelInfo &b) {
++				return (a.created != b.created)
++					? (a.created > b.created)
++					: (a.id < b.id);
++			});
++	}
++	if (int(result.size()) > kMaxModels) {
++		result.resize(kMaxModels);
++	}
++	return result;
++}
++
+ QString NormalizedBaseUrl(const QString &value) {
+ 	auto trimmed = value.trimmed();
+ 	if (trimmed.isEmpty()) {
+diff --git a/Telegram/SourceFiles/tele/agent/agent_protocol.h b/Telegram/SourceFiles/tele/agent/agent_protocol.h
+index eadb67bbfc3a2e0e8a6f9291d56a5d0973d1eb46..18abbc741abb29967164678543434ae533a0a409 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_protocol.h
++++ b/Telegram/SourceFiles/tele/agent/agent_protocol.h
+@@ -89,6 +89,23 @@ struct StreamEvent {
+ 	QString text;
+ };
+ 
++struct ModelInfo {
++	QString id;
++	QString name;
++	qint64 created = 0;
++};
++
++struct ModelPage {
++	std::vector<ModelInfo> models;
++	bool hasMore = false;
++	QString lastId;
++};
++
++[[nodiscard]] ModelPage ParseModelPage(const QByteArray &json);
++[[nodiscard]] std::vector<ModelInfo> PreparedModels(
++	Provider provider,
++	std::vector<ModelInfo> list);
++
+ [[nodiscard]] QString NormalizedBaseUrl(const QString &value);
+ [[nodiscard]] QString ErrorMessage(int status, const QByteArray &body);
+ 
+diff --git a/Telegram/SourceFiles/tele/agent/agent_runner.cpp b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
+index 84c181d12452346b3865b01796ed89b8aeadc1a0..8da7350864830928ca6627a69830c20b6ef79a9b 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_runner.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_runner.cpp
+@@ -239,6 +239,82 @@ void Runner::checkKey(Fn<void(QString)> done) {
+ 	});
+ }
+ 
++void Runner::fetchModels(
++		Provider provider,
++		Fn<void(std::vector<ModelInfo>, QString)> done) {
++	constexpr auto kMaxPages = 10;
++	constexpr auto kMaxModelsBody = 4 * 1024 * 1024;
++	if (OfflineForLaunch()) {
++		done({}, Tr(u"The agent is off: mad was started with -teleoffline."_q));
++		return;
++	}
++	const auto key = _store->key(provider);
++	const auto base = IsCustom(provider)
++		? CurrentBaseUrl()
++		: OfficialBaseUrl(provider);
++	if (key.isEmpty()) {
++		done({}, Tr(u"Add an API key to load the list of models."_q));
++		return;
++	} else if (base.isEmpty()) {
++		done({}, Tr(u"Set the API address first."_q));
++		return;
++	}
++	struct State {
++		std::vector<ModelInfo> models;
++		int pages = 0;
++		Fn<void(QString)> load;
++	};
++	const auto state = std::make_shared<State>();
++	const auto weak = base::make_weak(this);
++	state->load = [=](QString after) {
++		auto url = base + u"/models"_q;
++		if (UsesAnthropic(provider)) {
++			url += u"?limit=1000"_q;
++			if (!after.isEmpty()) {
++				url += u"&after_id="_q
++					+ QString::fromLatin1(QUrl::toPercentEncoding(after));
++			}
++		}
++		auto request = MakeRequest(provider, url, key);
++		request.setRawHeader("Accept", "application/json");
++		const auto reply = _network->get(request);
++		QObject::connect(reply, &QNetworkReply::finished, this, [=] {
++			const auto status = reply->attribute(
++				QNetworkRequest::HttpStatusCodeAttribute).toInt();
++			const auto body = reply->read(kMaxModelsBody);
++			const auto failed = (reply->error() != QNetworkReply::NoError)
++				&& !status;
++			const auto error = failed ? reply->errorString() : QString();
++			reply->deleteLater();
++			if (!weak) {
++				return;
++			} else if (failed) {
++				state->load = nullptr;
++				done({}, error);
++				return;
++			} else if (status < 200 || status >= 300) {
++				state->load = nullptr;
++				done({}, ErrorMessage(status, body));
++				return;
++			}
++			auto page = ParseModelPage(body);
++			for (auto &model : page.models) {
++				state->models.push_back(std::move(model));
++			}
++			if (UsesAnthropic(provider)
++				&& page.hasMore
++				&& !page.lastId.isEmpty()
++				&& ++state->pages < kMaxPages) {
++				state->load(page.lastId);
++				return;
++			}
++			const auto load = base::take(state->load);
++			done(PreparedModels(provider, base::take(state->models)), QString());
++		});
++	};
++	state->load(QString());
++}
++
+ void Runner::setConfirm(Confirm confirm) {
+ 	_confirm = std::move(confirm);
+ }
+diff --git a/Telegram/SourceFiles/tele/agent/agent_runner.h b/Telegram/SourceFiles/tele/agent/agent_runner.h
+index cf2bc1f3b319fb726b84dd490acf68e449f3b992..a250b899500f160560ea1d267987605892434c87 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_runner.h
++++ b/Telegram/SourceFiles/tele/agent/agent_runner.h
+@@ -50,6 +50,9 @@ public:
+ 	[[nodiscard]] QString key(Provider provider) const;
+ 	void setKey(Provider provider, const QString &value);
+ 	void checkKey(Fn<void(QString)> done);
++	void fetchModels(
++		Provider provider,
++		Fn<void(std::vector<ModelInfo>, QString)> done);
+ 
+ 	void setConfirm(Confirm confirm);
+ 
+diff --git a/Telegram/SourceFiles/tele/agent/agent_store.cpp b/Telegram/SourceFiles/tele/agent/agent_store.cpp
+index 614746335570445a85208b507d5041270267d338..73d1ec533e08ebfc64f5e3f8cbbd755e7060a2d0 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_store.cpp
++++ b/Telegram/SourceFiles/tele/agent/agent_store.cpp
+@@ -214,9 +214,44 @@ Provider CurrentProvider() {
+ 	return ProviderFromId(OptionText(kOptionAgentProvider));
+ }
+ 
+-QString CurrentModel() {
++namespace {
++
++[[nodiscard]] QJsonObject ModelMap() {
+ 	const auto value = OptionText(kOptionAgentModel);
+-	return value.isEmpty() ? DefaultModel(CurrentProvider()) : value;
++	if (value.startsWith(QChar('{'))) {
++		return QJsonDocument::fromJson(value.toUtf8()).object();
++	}
++	auto result = QJsonObject();
++	if (!value.isEmpty()) {
++		result.insert(ProviderId(CurrentProvider()), value);
++	}
++	return result;
++}
++
++} // namespace
++
++QString ModelFor(Provider provider) {
++	return ModelMap().value(ProviderId(provider)).toString().trimmed();
++}
++
++void SetModelFor(Provider provider, const QString &model) {
++	auto map = ModelMap();
++	const auto trimmed = model.trimmed();
++	if (trimmed.isEmpty()) {
++		map.remove(ProviderId(provider));
++	} else {
++		map.insert(ProviderId(provider), trimmed);
++	}
++	base::options::lookup<QString>(kOptionAgentModel).set(map.isEmpty()
++		? QString()
++		: QString::fromUtf8(QJsonDocument(map).toJson(
++			QJsonDocument::Compact)));
++}
++
++QString CurrentModel() {
++	const auto provider = CurrentProvider();
++	const auto value = ModelFor(provider);
++	return value.isEmpty() ? DefaultModel(provider) : value;
+ }
+ 
+ QString CurrentBaseUrl() {
+diff --git a/Telegram/SourceFiles/tele/agent/agent_store.h b/Telegram/SourceFiles/tele/agent/agent_store.h
+index bae4f1d7e117a10e03c96895457986668f7253b1..ef823c95d695db90083b67b2c3c7cba472405594 100644
+--- a/Telegram/SourceFiles/tele/agent/agent_store.h
++++ b/Telegram/SourceFiles/tele/agent/agent_store.h
+@@ -51,6 +51,8 @@ private:
+ };
+ 
+ [[nodiscard]] Provider CurrentProvider();
++[[nodiscard]] QString ModelFor(Provider provider);
++void SetModelFor(Provider provider, const QString &model);
+ [[nodiscard]] QString CurrentModel();
+ [[nodiscard]] QString CurrentBaseUrl();
+ [[nodiscard]] QString CurrentPersona();
+diff --git a/Telegram/SourceFiles/tele/tele_options.cpp b/Telegram/SourceFiles/tele/tele_options.cpp
+index 6be4bf2f089fd465875d3906d5796ccb65ddc0ec..4f36ed58aae2d272e3d66dfac998bc3b5399fb80 100644
+--- a/Telegram/SourceFiles/tele/tele_options.cpp
++++ b/Telegram/SourceFiles/tele/tele_options.cpp
+@@ -825,7 +825,7 @@ base::options::option<QString> AgentBaseUrlOption({
+ base::options::option<QString> AgentModelOption({
+ 	.id = kOptionAgentModel,
+ 	.name = "Model",
+-	.description = "Empty uses the provider's default model.",
++	.description = "Pick one from the provider's list or type any model.",
+ });
+ 
+ base::options::option<QString> AgentPersonaOption({
+diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+index 01f210173075aa3a17f14e0f66135befb6379eda..62a16a0cba788be683200ff02cba0a4eaed1b660 100644
+--- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
++++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
+@@ -151,6 +151,19 @@ void TestAgentProtocol() {
+ 	Require(NormalizedBaseUrl(QStringLiteral("http://localhost:8080/api")) == QStringLiteral("http://localhost:8080/api"), "base url kept");
+ 	Require(NormalizedBaseUrl(QStringLiteral("  ")).isEmpty(), "empty base url");
+ 
++	const auto anthropicModels = ParseModelPage(QByteArrayLiteral(
++		"{\"data\":[{\"id\":\"claude-opus-5-5\",\"display_name\":\"Claude Opus 5.5\",\"type\":\"model\"},"
++		"{\"id\":\"claude-haiku-5-5\",\"display_name\":\"claude-haiku-5-5\"}],\"has_more\":true,\"last_id\":\"claude-haiku-5-5\"}"));
++	Require(anthropicModels.models.size() == 2 && anthropicModels.hasMore, "anthropic models page");
++	Require(anthropicModels.models[0].name == QStringLiteral("Claude Opus 5.5") && anthropicModels.models[1].name.isEmpty(), "model display names");
++	Require(anthropicModels.lastId == QStringLiteral("claude-haiku-5-5"), "models page last id");
++	Require(PreparedModels(Provider::Anthropic, anthropicModels.models)[0].id == QStringLiteral("claude-opus-5-5"), "anthropic order kept");
++	const auto openaiModels = PreparedModels(Provider::OpenAI, ParseModelPage(QByteArrayLiteral(
++		"{\"object\":\"list\",\"data\":[{\"id\":\"b\",\"created\":5},{\"id\":\"a\",\"created\":9},{\"id\":\"c\",\"created\":5},{\"id\":\"a\",\"created\":1}]}")).models);
++	Require(openaiModels.size() == 3, "models deduplicated");
++	Require(openaiModels[0].id == QStringLiteral("a") && openaiModels[1].id == QStringLiteral("b") && openaiModels[2].id == QStringLiteral("c"), "openai models sorted");
++	Require(ParseModelPage(QByteArrayLiteral("nope")).models.empty(), "bad models page");
++
+ 	auto sse = SseParser();
+ 	auto payloads = sse.feed(QByteArrayLiteral("event: x\r\ndata: {\"a\":1}\r\n\r\ndata:"));
+ 	Require(payloads.size() == 1 && payloads[0] == QByteArrayLiteral("{\"a\":1}"), "sse line");

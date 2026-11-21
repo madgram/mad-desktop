@@ -2,7 +2,7 @@
 
 every tele patch, grouped by the release that brought it, newest first. [features](features.md) has the same rows grouped by settings page. release notes and the in-app what's new are made from these rows, so their format is strict: see [the patch row](development.md#the-patch-row).
 
-all 434 patches, newest release first.
+all 435 patches, newest release first.
 
 ### [mad dev](mad.md)
 
@@ -96,6 +96,7 @@ all 434 patches, newest release first.
 | [421](../patches/tdesktop/0421-feat-the-ai-agent-opens-in-the-main-window-as-a-tab-.patch) | the ai agent opens in the main window: as a tab next to the folders on the left or as a chat in all chats that starts pinned and can be unpinned or dragged like any other, shows what the agent is doing right now instead of the last message and opens without a black strip, with your messages in bubbles, answers with formatting and a copy button, tool chips, suggestions in an empty chat and a paperclip for photos; its settings are split into general, permissions and auto-replies, and notifications from the auto-responder can be turned off | with 414 |
 | [422](../patches/tdesktop/0422-feat-clicking-a-mad-badge-shows-its-name-and-descrip.patch) | clicking a mad badge shows its name and description in a tooltip instead of the collectible card: a blurred bubble like on the phone, with a tail pointing at the badge, above it or below it near the top of the window, always on top of the profile; long texts are cut short with an ellipsis | with 337 |
 | [423](../patches/tdesktop/0423-fix-the-smooth-caret-stays-on-the-text-in-long-messa.patch) | the smooth cursor stays on the text in long messages: it follows the field when it grows or scrolls instead of being left behind | with 354 |
+| [424](../patches/tdesktop/0424-feat-pick-the-ai-agent-s-model-from-the-provider-s-l.patch) | the ai agent's model is picked like on the phone: a list loaded from the provider, Anthropic or OpenAI, with the current one checked, and a field to type any model; each provider keeps its own model, and the API address shows only for compatible providers | settings → mad → ai agent → model |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1009](../patches/Telegram/lib_rpl/0001-fix-topic-tabs-no-longer-crash-after-you-move-them.patch) | topic and direct message tabs no longer crash after you move them to the top, bottom or side and then scroll them. the cause was in the library that passes events around, so anything else that lost updates the same way is fixed too | always on |
 | [1010](../patches/Telegram/ThirdParty/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs/0001-fix-refuse-await-using-outside-async-functions.patch) | closes the quickjs hole that let a bot's message widget run any program on your pc: the engine gets telegram's own `await using` fix from widget-sandbox 0.6.4, which telegram desktop 7.4.2 ships without | always on |
