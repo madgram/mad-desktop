@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: yar2slav <191513735+yar2slav@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 18:51:07 +0200
+Subject: [PATCH] fix: the smooth caret stays on the text in long messages
+
+---
+ .../SourceFiles/tele/tele_smooth_typing.cpp   | 42 +++++++++++++++----
+ 1 file changed, 34 insertions(+), 8 deletions(-)
+
+diff --git a/Telegram/SourceFiles/tele/tele_smooth_typing.cpp b/Telegram/SourceFiles/tele/tele_smooth_typing.cpp
+index 33150501b7533e4e916dc65ffe6403988b3fc25b..981e53684d757590db5375166176f65c055ee28c 100644
+--- a/Telegram/SourceFiles/tele/tele_smooth_typing.cpp
++++ b/Telegram/SourceFiles/tele/tele_smooth_typing.cpp
+@@ -68,10 +68,10 @@ public:
+ 			QMetaObject::invokeMethod(this, [=] { fadeIn(position, added); }, Qt::QueuedConnection);
+ 		});
+ 		connect(edit->verticalScrollBar(), &QScrollBar::valueChanged, this, [=] {
+-			move(false);
++			update();
+ 		});
+ 		connect(edit->horizontalScrollBar(), &QScrollBar::valueChanged, this, [=] {
+-			move(false);
++			update();
+ 		});
+ 		connect(edit->document()->documentLayout(), &QAbstractTextDocumentLayout::documentSizeChanged, this, [=] {
+ 			move(false);
+@@ -96,7 +96,9 @@ protected:
+ 			return false;
+ 		} else if (watched == edit->viewport() && e->type() == QEvent::Resize) {
+ 			setGeometry(edit->viewport()->rect());
+-			move(false);
++			QMetaObject::invokeMethod(this, [=] { move(false); }, Qt::QueuedConnection);
++		} else if (watched == edit->viewport() && e->type() == QEvent::Paint) {
++			sync();
+ 		} else if (watched == edit
+ 			&& (e->type() == QEvent::FocusIn || e->type() == QEvent::FocusOut)) {
+ 			restartBlink();
+@@ -110,20 +112,44 @@ protected:
+ 			return;
+ 		}
+ 		auto p = QPainter(this);
++		const auto shift = -scrollOffset();
+ 		const auto now = crl::now();
+ 		for (const auto &fade : _fades) {
+ 			const auto progress = std::clamp((now - fade.start) / float64(CurrentDurations().fade), 0., 1.);
+ 			auto color = _background;
+ 			color.setAlphaF(1. - anim::easeOutCubic(1., progress));
+-			p.fillRect(fade.rect, color);
++			p.fillRect(fade.rect.translated(shift), color);
+ 		}
+ 		if (!edit->hasFocus() || edit->isReadOnly() || !_shown) {
+ 			return;
+ 		}
+-		p.fillRect(current(), edit->palette().color(QPalette::Text));
++		p.fillRect(current().translated(shift), edit->palette().color(QPalette::Text));
+ 	}
+ 
+ private:
++	[[nodiscard]] QPointF scrollOffset() const {
++		const auto edit = _edit.data();
++		return edit
++			? QPointF(
++				edit->horizontalScrollBar()->value(),
++				edit->verticalScrollBar()->value())
++			: QPointF();
++	}
++
++	[[nodiscard]] QRectF documentRect(const QRect &viewportRect) const {
++		return QRectF(viewportRect).translated(scrollOffset());
++	}
++
++	void sync() {
++		const auto edit = _edit.data();
++		if (!edit || !_placed) {
++			return;
++		}
++		if (documentRect(edit->cursorRect()) != _to) {
++			move(true);
++		}
++	}
++
+ 	[[nodiscard]] QRectF current() const {
+ 		const auto progress = _glide.value(1.);
+ 		const auto mix = [&](qreal from, qreal to) {
+@@ -141,7 +167,7 @@ private:
+ 		if (!edit) {
+ 			return;
+ 		}
+-		const auto target = QRectF(edit->cursorRect());
++		const auto target = documentRect(edit->cursorRect());
+ 		if (_placed && target == _to) {
+ 			restartBlink();
+ 			return;
+@@ -181,9 +207,9 @@ private:
+ 		}
+ 		auto cursor = QTextCursor(edit->document());
+ 		cursor.setPosition(position);
+-		const auto from = edit->cursorRect(cursor);
++		const auto from = documentRect(edit->cursorRect(cursor));
+ 		cursor.setPosition(position + added);
+-		const auto till = edit->cursorRect(cursor);
++		const auto till = documentRect(edit->cursorRect(cursor));
+ 		if (from.top() != till.top() || till.x() <= from.x()) {
+ 			return;
+ 		}
