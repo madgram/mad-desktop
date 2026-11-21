@@ -2,7 +2,7 @@
 
 every tele patch, grouped by the release that brought it, newest first. [features](features.md) has the same rows grouped by settings page. release notes and the in-app what's new are made from these rows, so their format is strict: see [the patch row](development.md#the-patch-row).
 
-all 432 patches, newest release first.
+all 433 patches, newest release first.
 
 ### [mad dev](mad.md)
 
@@ -94,6 +94,7 @@ all 432 patches, newest release first.
 | [419](../patches/tdesktop/0419-feat-a-duck-companion-above-the-message-field-in-pri.patch) | a small animated duck sits above the message field in chats with people: it blinks, waves and opens its beak, bounces when clicked and spins on a double click; drag it to move it and scroll over it to resize it | settings → mad → interface → animations, off |
 | [420](../patches/tdesktop/0420-feat-linked-accounts-show-up-as-a-card-in-profiles-a.patch) | linked accounts show up in profiles as a card: a list with links or a strip with arrows, whichever the owner picks; "manage" opens a window that sets who sees each account, adds platforms from a grid, verifies your own domain with a TXT record and refreshes or disconnects accounts | with 413 |
 | [421](../patches/tdesktop/0421-feat-the-ai-agent-opens-in-the-main-window-as-a-tab-.patch) | the ai agent opens in the main window: as a tab next to the folders on the left or as a pinned chat in all chats, with your messages in bubbles, answers with formatting and a copy button, tool chips, suggestions in an empty chat and a paperclip for photos; its settings are split into general, permissions and auto-replies, and notifications from the auto-responder can be turned off | with 414 |
+| [422](../patches/tdesktop/0422-feat-clicking-a-mad-badge-shows-its-name-and-descrip.patch) | clicking a mad badge shows its name and description in a tooltip next to it instead of the collectible card; long texts are cut short with an ellipsis | with 337 |
 | [1008](../patches/Telegram/lib_ui/0008-feat-recognize-mad-links-in-message-text.patch) | recognizes mad:// links in message text | with 350 |
 | [1009](../patches/Telegram/lib_rpl/0001-fix-topic-tabs-no-longer-crash-after-you-move-them.patch) | topic and direct message tabs no longer crash after you move them to the top, bottom or side and then scroll them. the cause was in the library that passes events around, so anything else that lost updates the same way is fixed too | always on |
 | [1010](../patches/Telegram/ThirdParty/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs/0001-fix-refuse-await-using-outside-async-functions.patch) | closes the quickjs hole that let a bot's message widget run any program on your pc: the engine gets telegram's own `await using` fix from widget-sandbox 0.6.4, which telegram desktop 7.4.2 ships without | always on |
