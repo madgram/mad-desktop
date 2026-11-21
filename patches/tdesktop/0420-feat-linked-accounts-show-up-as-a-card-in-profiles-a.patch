@@ -20,17 +20,17 @@ Subject: [PATCH] feat: linked accounts show up as a card in profiles and get
  .../info/profile/info_profile_actions.cpp     |    9 +-
  .../SourceFiles/tele/tele_card_widgets.cpp    |  458 ++++++
  Telegram/SourceFiles/tele/tele_card_widgets.h |  109 ++
- .../SourceFiles/tele/tele_linked_accounts.cpp | 1088 +++++++-------
+ .../SourceFiles/tele/tele_linked_accounts.cpp | 1082 +++++++-------
  .../SourceFiles/tele/tele_linked_accounts.h   |    9 +-
- .../tele/tele_linked_accounts_box.cpp         | 1337 +++++++++++++++++
+ .../tele/tele_linked_accounts_box.cpp         | 1328 +++++++++++++++++
  .../tele/tele_linked_accounts_data.cpp        |  192 ++-
  .../tele/tele_linked_accounts_data.h          |   25 +
  .../tele/tele_linked_accounts_service.cpp     |  643 ++++++++
  .../tele/tele_linked_accounts_service.h       |  110 ++
- .../tele/tele_linked_accounts_ui.cpp          |  181 +++
- .../tele/tele_linked_accounts_ui.h            |   19 +
+ .../tele/tele_linked_accounts_ui.cpp          |  183 +++
+ .../tele/tele_linked_accounts_ui.h            |   25 +
  .../tele/tests/mad_logic_tests.cpp            |   18 +
- 25 files changed, 3725 insertions(+), 546 deletions(-)
+ 25 files changed, 3718 insertions(+), 546 deletions(-)
  create mode 100644 Telegram/Resources/tele/platforms/discord.png
  create mode 100644 Telegram/Resources/tele/platforms/github.png
  create mode 100644 Telegram/Resources/tele/platforms/gitlab.png
@@ -1771,10 +1771,10 @@ index 0000000000000000000000000000000000000000..178ecb2678556141b8175e648412c85b
 +
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts.cpp
-index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..05f14315a8a056634e5c6e15eb0737787e31b258 100644
+index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..858fa4b2305c9ddcc8733f75203e0fcccb5a241b 100644
 --- a/Telegram/SourceFiles/tele/tele_linked_accounts.cpp
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts.cpp
-@@ -1,614 +1,680 @@
+@@ -1,614 +1,674 @@
  #include "tele/tele_linked_accounts.h"
  
 -#include "apiwrap.h"
@@ -1919,8 +1919,8 @@ index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..05f14315a8a056634e5c6e15eb073778
 +		- titleFont->height
 +		- skip
 +		- subtitleFont->height) / 2;
-+	const auto verified = account.verified ? CardScaled(14) : 0;
-+	const auto verifiedSkip = verified ? (verified + CardScaled(5)) : 0;
++	const auto verified = account.verified ? LinkedVerifiedWidth() : 0;
++	const auto verifiedSkip = verified ? (verified + CardScaled(2)) : 0;
 +	const auto title = titleFont->elided(
 +		LinkedPlatformName(account.platform),
 +		std::max(right - textLeft - verifiedSkip, 0));
@@ -1928,15 +1928,11 @@ index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..05f14315a8a056634e5c6e15eb073778
 +	p.setPen(st::windowBoldFg);
 +	p.drawText(textLeft, textTop + titleFont->ascent, title);
 +	if (verified) {
-+		const auto titleWidth = titleFont->width(title);
 +		PaintLinkedVerified(
 +			p,
-+			QRectF(
-+				textLeft + titleWidth + CardScaled(5),
-+				textTop + (titleFont->height - verified) / 2.,
-+				verified,
-+				verified),
-+			st::windowActiveTextFg->c);
++			textLeft + titleFont->width(title) + CardScaled(2),
++			textTop,
++			titleFont->height);
 +	}
 +	p.setFont(subtitleFont);
 +	p.setPen(st::windowSubTextFg);
@@ -2121,7 +2117,9 @@ index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..05f14315a8a056634e5c6e15eb073778
 +		chip.width = icon
 +			+ CardScaled(8)
 +			+ font->width(chip.text)
-+			+ (chip.account.verified ? CardScaled(17) : 0);
++			+ (chip.account.verified
++				? (CardScaled(2) + LinkedVerifiedWidth())
++				: 0);
 +		left += chip.width + gap;
 +	}
 +	_contentWidth = _chips.empty()
@@ -2380,7 +2378,6 @@ index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..05f14315a8a056634e5c6e15eb073778
 +	const auto height = this->height();
 +	const auto icon = CardScaled(kChipIcon);
 +	const auto font = CardFont(14, true);
-+	const auto verified = CardScaled(13);
 +	const auto shift = area.x() - int(std::round(_scroll));
 +	p.save();
 +	p.setClipRect(area);
@@ -2454,12 +2451,9 @@ index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..05f14315a8a056634e5c6e15eb073778
 +		if (chip.account.verified) {
 +			PaintLinkedVerified(
 +				p,
-+				QRectF(
-+					textLeft + font->width(chip.text) + CardScaled(4),
-+					(height - verified) / 2.,
-+					verified,
-+					verified),
-+				st::windowActiveTextFg->c);
++				textLeft + font->width(chip.text) + CardScaled(2),
++				(height - font->height) / 2,
++				font->height);
  		}
 -		if (token.isEmpty()) {
 -			--_busy;
@@ -2965,7 +2959,7 @@ index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..05f14315a8a056634e5c6e15eb073778
  }
  
  bool HandleLinkedAccountsLink(
-@@ -621,7 +687,7 @@ bool HandleLinkedAccountsLink(
+@@ -621,7 +681,7 @@ bool HandleLinkedAccountsLink(
  	if (path == u"/linked"_q) {
  		for (const auto &[index, account] : Core::App().domain().accounts()) {
  			if (const auto session = account->maybeSession()) {
@@ -3004,10 +2998,10 @@ index cf79589dc7dc101628661ec6b715825104a1b9b2..825e75beaee0dbd8a62b9886401674d6
  	not_null<Window::SessionController*> controller);
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..c939f4c0ec2002c9f5eb391b17dface254cfa91d
+index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b788e28888
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp
-@@ -0,0 +1,1337 @@
+@@ -0,0 +1,1328 @@
 +#include "tele/tele_linked_accounts.h"
 +
 +#include "main/main_session.h"
@@ -3234,8 +3228,8 @@ index 0000000000000000000000000000000000000000..c939f4c0ec2002c9f5eb391b17dface2
 +		- titleFont->height
 +		- skip
 +		- subtitleFont->height) / 2;
-+	const auto verified = account.verified ? CardScaled(15) : 0;
-+	const auto verifiedSkip = verified ? (verified + CardScaled(6)) : 0;
++	const auto verified = account.verified ? LinkedVerifiedWidth() : 0;
++	const auto verifiedSkip = verified ? (verified + CardScaled(2)) : 0;
 +	const auto titleText = titleFont->elided(
 +		title,
 +		std::max(right - textLeft - verifiedSkip, 0));
@@ -3245,12 +3239,9 @@ index 0000000000000000000000000000000000000000..c939f4c0ec2002c9f5eb391b17dface2
 +	if (verified) {
 +		PaintLinkedVerified(
 +			p,
-+			QRectF(
-+				textLeft + titleFont->width(titleText) + CardScaled(6),
-+				textTop + (titleFont->height - verified) / 2.,
-+				verified,
-+				verified),
-+			st::windowActiveTextFg->c);
++			textLeft + titleFont->width(titleText) + CardScaled(2),
++			textTop,
++			titleFont->height);
 +	}
 +	p.setFont(subtitleFont);
 +	p.setPen(st::windowSubTextFg);
@@ -3387,12 +3378,9 @@ index 0000000000000000000000000000000000000000..c939f4c0ec2002c9f5eb391b17dface2
 +	note->paintRequest() | rpl::on_next([=] {
 +		auto p = QPainter(note);
 +		const auto side = CardScaled(kSide);
-+		const auto mark = CardScaled(15);
++		const auto mark = LinkedVerifiedWidth();
 +		const auto font = CardFont(13, false);
-+		PaintLinkedVerified(
-+			p,
-+			QRectF(side, (note->height() - mark) / 2., mark, mark),
-+			st::windowActiveTextFg->c);
++		PaintLinkedVerified(p, side, 0, note->height());
 +		p.setFont(font);
 +		p.setPen(st::windowSubTextFg);
 +		const auto left = side + mark + CardScaled(8);
@@ -3752,8 +3740,10 @@ index 0000000000000000000000000000000000000000..c939f4c0ec2002c9f5eb391b17dface2
 +			LinkedPlatformIcon(account.platform, icon));
 +		const auto titleFont = CardFont(22, true);
 +		const auto subtitleFont = CardFont(14, false);
-+		const auto verified = account.verified ? CardScaled(18) : 0;
-+		const auto verifiedSkip = verified ? (verified + CardScaled(6)) : 0;
++		const auto verified = account.verified
++			? LinkedVerifiedWidth(true)
++			: 0;
++		const auto verifiedSkip = verified ? (verified + CardScaled(4)) : 0;
 +		const auto available = std::max(
 +			width - 2 * CardScaled(kSide) - verifiedSkip,
 +			0);
@@ -3767,12 +3757,10 @@ index 0000000000000000000000000000000000000000..c939f4c0ec2002c9f5eb391b17dface2
 +		if (verified) {
 +			PaintLinkedVerified(
 +				p,
-+				QRectF(
-+					titleLeft + titleFont->width(title) + CardScaled(6),
-+					titleTop + (titleFont->height - verified) / 2.,
-+					verified,
-+					verified),
-+				st::windowActiveTextFg->c);
++				titleLeft + titleFont->width(title) + CardScaled(4),
++				titleTop,
++				titleFont->height,
++				true);
 +		}
 +		const auto subtitle = subtitleFont->elided(
 +			LinkedAccountTitle(account),
@@ -3865,18 +3853,18 @@ index 0000000000000000000000000000000000000000..c939f4c0ec2002c9f5eb391b17dface2
 +		const auto font = CardFont(14, true);
 +		const auto icon = CardScaled(24);
 +		const auto padding = CardScaled(12);
-+		const auto verified = account.verified ? CardScaled(13) : 0;
++		const auto verified = account.verified ? LinkedVerifiedWidth() : 0;
 +		const auto side = CardScaled(kSide);
 +		const auto maxText = std::max(
 +			preview->width() - 2 * side - 2 * padding - icon
-+				- CardScaled(8) - (verified ? verified + CardScaled(4) : 0),
++				- CardScaled(8) - (verified ? verified + CardScaled(2) : 0),
 +			0);
 +		const auto elided = font->elided(text, maxText);
 +		const auto chip = 2 * padding
 +			+ icon
 +			+ CardScaled(8)
 +			+ font->width(elided)
-+			+ (verified ? verified + CardScaled(4) : 0);
++			+ (verified ? verified + CardScaled(2) : 0);
 +		const auto rect = QRect(side, 0, chip, preview->height());
 +		const auto radius = CardScaled(kCardRadius) * 1.;
 +		p.setPen(Qt::NoPen);
@@ -3900,12 +3888,9 @@ index 0000000000000000000000000000000000000000..c939f4c0ec2002c9f5eb391b17dface2
 +		if (verified) {
 +			PaintLinkedVerified(
 +				p,
-+				QRectF(
-+					textLeft + font->width(elided) + CardScaled(4),
-+					(rect.height() - verified) / 2.,
-+					verified,
-+					verified),
-+				st::windowActiveTextFg->c);
++				textLeft + font->width(elided) + CardScaled(2),
++				(rect.height() - font->height) / 2,
++				font->height);
 +		}
 +		p.setOpacity(1.);
 +	}, preview->lifetime());
@@ -5448,16 +5433,18 @@ index 0000000000000000000000000000000000000000..09366a1f28ce56fd87d65a4a43cf70e7
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_ui.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts_ui.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..90ecfaf80459fe2dd52d17ee15dd58495e109a19
+index 0000000000000000000000000000000000000000..631149f7dbaba2d242e3e6867790c664fccd61a7
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_ui.cpp
-@@ -0,0 +1,181 @@
+@@ -0,0 +1,183 @@
 +#include "tele/tele_linked_accounts_ui.h"
 +
 +#include "tele/tele_lowercase.h"
 +#include "ui/painter.h"
 +#include "ui/style/style_core_scale.h"
 +#include "styles/style_basic.h"
++#include "styles/style_dialogs.h"
++#include "styles/style_info.h"
 +
 +#include <QtCore/QFile>
 +#include <QtGui/QPainter>
@@ -5579,32 +5566,32 @@ index 0000000000000000000000000000000000000000..90ecfaf80459fe2dd52d17ee15dd5849
 +	return result;
 +}
 +
-+void PaintLinkedVerified(QPainter &p, const QRectF &rect, const QColor &color) {
-+	auto hq = PainterHighQualityEnabler(p);
-+	const auto width = std::max(rect.width() * 0.1, 1.);
-+	auto pen = QPen(color);
-+	pen.setWidthF(width);
-+	pen.setCapStyle(Qt::RoundCap);
-+	pen.setJoinStyle(Qt::RoundJoin);
-+	p.setPen(pen);
-+	p.setBrush(Qt::NoBrush);
-+	const auto inner = rect.marginsRemoved(QMarginsF(
-+		width / 2.,
-+		width / 2.,
-+		width / 2.,
-+		width / 2.));
-+	p.drawEllipse(inner);
-+	auto check = QPainterPath();
-+	check.moveTo(
-+		inner.left() + inner.width() * 0.28,
-+		inner.top() + inner.height() * 0.52);
-+	check.lineTo(
-+		inner.left() + inner.width() * 0.44,
-+		inner.top() + inner.height() * 0.67);
-+	check.lineTo(
-+		inner.left() + inner.width() * 0.73,
-+		inner.top() + inner.height() * 0.36);
-+	p.drawPath(check);
++int LinkedVerifiedWidth(bool large) {
++	return large
++		? st::infoVerifiedStar.width()
++		: st::dialogsVerifiedIcon.width();
++}
++
++void PaintLinkedVerified(
++		QPainter &p,
++		int left,
++		int top,
++		int height,
++		bool large) {
++	if (large) {
++		const auto &star = st::infoVerifiedStar;
++		const auto y = top + (height - star.height()) / 2;
++		const auto outer = 2 * left + star.width();
++		star.paint(p, left, y, outer);
++		st::infoVerifiedCheck.paint(p, left, y, outer);
++		return;
++	}
++	const auto &icon = st::dialogsVerifiedIcon;
++	icon.paint(
++		p,
++		left,
++		top + (height - icon.height()) / 2,
++		2 * left + icon.width());
 +}
 +
 +void PaintLinkedExternalArrow(
@@ -5635,10 +5622,10 @@ index 0000000000000000000000000000000000000000..90ecfaf80459fe2dd52d17ee15dd5849
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_ui.h b/Telegram/SourceFiles/tele/tele_linked_accounts_ui.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..e856aae3da5dc1d98e9e4ab84b1776949046239b
+index 0000000000000000000000000000000000000000..fb08c4ff362ba9c10070d87403bf7ef08d970895
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_ui.h
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,25 @@
 +#pragma once
 +
 +#include "tele/tele_linked_accounts_data.h"
@@ -5651,7 +5638,13 @@ index 0000000000000000000000000000000000000000..e856aae3da5dc1d98e9e4ab84b177694
 +
 +[[nodiscard]] QString LinkedPlatformName(const QString &platform);
 +[[nodiscard]] QImage LinkedPlatformIcon(const QString &platform, int size);
-+void PaintLinkedVerified(QPainter &p, const QRectF &rect, const QColor &color);
++[[nodiscard]] int LinkedVerifiedWidth(bool large = false);
++void PaintLinkedVerified(
++	QPainter &p,
++	int left,
++	int top,
++	int height,
++	bool large = false);
 +void PaintLinkedExternalArrow(
 +	QPainter &p,
 +	const QRectF &rect,
