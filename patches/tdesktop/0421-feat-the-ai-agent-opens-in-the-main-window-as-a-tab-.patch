@@ -17,7 +17,7 @@ Subject: [PATCH] feat: the ai agent opens in the main window as a tab or a
  .../SourceFiles/tele/agent/agent_navigation.h |   18 +
  .../SourceFiles/tele/agent/agent_panel.cpp    |  452 +------
  Telegram/SourceFiles/tele/agent/agent_panel.h |    1 +
- .../SourceFiles/tele/agent/agent_peer.cpp     |  372 ++++++
+ .../SourceFiles/tele/agent/agent_peer.cpp     |  369 ++++++
  Telegram/SourceFiles/tele/agent/agent_peer.h  |   57 +
  .../SourceFiles/tele/agent/agent_protocol.cpp |    2 +-
  .../SourceFiles/tele/agent/agent_runner.cpp   |   13 +-
@@ -36,7 +36,7 @@ Subject: [PATCH] feat: the ai agent opens in the main window as a tab or a
  Telegram/SourceFiles/tele/tele_options.h      |    6 +
  .../SourceFiles/tele/tele_settings_io.cpp     |    2 +
  .../window/window_filters_menu.cpp            |    2 +
- 31 files changed, 2962 insertions(+), 524 deletions(-)
+ 31 files changed, 2959 insertions(+), 524 deletions(-)
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_chat.cpp
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_chat.h
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_navigation.cpp
@@ -2774,10 +2774,10 @@ index 43daf093581025d2ca12f40acbb86442910c0106..ef9c5e897dae11e826095aa3ccf2f004
  	not_null<Window::SessionController*> controller);
 diff --git a/Telegram/SourceFiles/tele/agent/agent_peer.cpp b/Telegram/SourceFiles/tele/agent/agent_peer.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..8e3daf59fbe2fb2233bbfac116765b497f328f97
+index 0000000000000000000000000000000000000000..571f86ca5d6581825a49b0b384bd052bcd34d496
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/agent/agent_peer.cpp
-@@ -0,0 +1,372 @@
+@@ -0,0 +1,369 @@
 +#include "tele/agent/agent_peer.h"
 +
 +#include "base/unixtime.h"
@@ -2951,11 +2951,14 @@ index 0000000000000000000000000000000000000000..8e3daf59fbe2fb2233bbfac116765b49
 +	state->shown = true;
 +	Mirror(session, state);
 +	auto &store = Runner::For(session).store();
-+	if (!store.chatPinned()) {
-+		const auto history = session->data().history(AgentPeerId());
-+		if (SetLocalPin(history, FilterId(), true, true)) {
-+			store.setChatPinned(true);
-+		}
++	if (store.chatPinned()) {
++		RefreshLocalPins(session);
++	} else if (SetLocalPin(
++			session->data().history(AgentPeerId()),
++			FilterId(),
++			true,
++			true)) {
++		store.setChatPinned(true);
 +	}
 +}
 +
@@ -2968,13 +2971,7 @@ index 0000000000000000000000000000000000000000..8e3daf59fbe2fb2233bbfac116765b49
 +	if (!history) {
 +		return;
 +	}
-+	auto items = std::vector<not_null<HistoryItem*>>();
-+	for (const auto &item : history->clientSideMessages()) {
-+		items.push_back(item);
-+	}
-+	for (const auto &item : items) {
-+		item->destroy();
-+	}
++	history->clear(History::ClearType::DeleteChat);
 +	RefreshLocalPins(session);
 +	history->updateChatListExistence();
 +	session->data().sendHistoryChangeNotifications();

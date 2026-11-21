@@ -34,10 +34,10 @@ index 7135193147f233bc75ceb2cfcac18a344f178ef9..47135d7c914f0bb6b0805ce2b257d40d
 +  "Untitled": "Без названия"
  }
 diff --git a/Telegram/SourceFiles/tele/agent/agent_peer.cpp b/Telegram/SourceFiles/tele/agent/agent_peer.cpp
-index 8e3daf59fbe2fb2233bbfac116765b497f328f97..576257d8b3f85c089d7436ff61758c22e129234c 100644
+index 571f86ca5d6581825a49b0b384bd052bcd34d496..1353bd773c131caa010ae293d70b6b8d5850242e 100644
 --- a/Telegram/SourceFiles/tele/agent/agent_peer.cpp
 +++ b/Telegram/SourceFiles/tele/agent/agent_peer.cpp
-@@ -328,6 +328,11 @@ void FillAgentMenu(
+@@ -325,6 +325,11 @@ void FillAgentMenu(
  		pinned ? Tr(u"Unpin"_q) : Tr(u"Pin"_q),
  		[=] { TogglePin(history); },
  		pinned ? &st::menuIconUnpin : &st::menuIconPin);
