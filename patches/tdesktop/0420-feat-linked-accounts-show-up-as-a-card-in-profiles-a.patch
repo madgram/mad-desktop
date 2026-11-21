@@ -20,9 +20,9 @@ Subject: [PATCH] feat: linked accounts show up as a card in profiles and get
  .../info/profile/info_profile_actions.cpp     |    9 +-
  .../SourceFiles/tele/tele_card_widgets.cpp    |  458 ++++++
  Telegram/SourceFiles/tele/tele_card_widgets.h |  109 ++
- .../SourceFiles/tele/tele_linked_accounts.cpp | 1082 +++++++------
+ .../SourceFiles/tele/tele_linked_accounts.cpp | 1084 +++++++------
  .../SourceFiles/tele/tele_linked_accounts.h   |    9 +-
- .../tele/tele_linked_accounts_box.cpp         | 1378 +++++++++++++++++
+ .../tele/tele_linked_accounts_box.cpp         | 1387 +++++++++++++++++
  .../tele/tele_linked_accounts_data.cpp        |  213 ++-
  .../tele/tele_linked_accounts_data.h          |   31 +
  .../tele/tele_linked_accounts_icons.cpp       |  151 ++
@@ -32,7 +32,7 @@ Subject: [PATCH] feat: linked accounts show up as a card in profiles and get
  .../tele/tele_linked_accounts_ui.cpp          |  349 +++++
  .../tele/tele_linked_accounts_ui.h            |   28 +
  .../tele/tests/mad_logic_tests.cpp            |   36 +
- 27 files changed, 4178 insertions(+), 546 deletions(-)
+ 27 files changed, 4189 insertions(+), 546 deletions(-)
  create mode 100644 Telegram/Resources/tele/platforms/discord.png
  create mode 100644 Telegram/Resources/tele/platforms/github.png
  create mode 100644 Telegram/Resources/tele/platforms/gitlab.png
@@ -1782,10 +1782,10 @@ index 0000000000000000000000000000000000000000..178ecb2678556141b8175e648412c85b
 +
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts.cpp
-index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..edc25236bdc2503da4af7f6712271bc9742c55aa 100644
+index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..014e73599729291864d000a8f3127b8ffa0a768c 100644
 --- a/Telegram/SourceFiles/tele/tele_linked_accounts.cpp
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts.cpp
-@@ -1,614 +1,674 @@
+@@ -1,614 +1,676 @@
  #include "tele/tele_linked_accounts.h"
  
 -#include "apiwrap.h"
@@ -2011,6 +2011,7 @@ index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..edc25236bdc2503da4af7f6712271bc9
 +				first,
 +				last);
 +		});
++		row->show();
 +		row->setPointerCursor(!account.url.isEmpty());
 +		row->setClickedCallback([=] {
 +			OpenAccount(account);
@@ -2662,6 +2663,7 @@ index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..edc25236bdc2503da4af7f6712271bc9
 +					0)));
 +	}, header->lifetime());
 +	if (manage) {
++		manage->show();
 +		manage->setClickedCallback([=] {
 +			ShowLinkedAccountsBox(controller);
  		});
@@ -2970,7 +2972,7 @@ index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..edc25236bdc2503da4af7f6712271bc9
  }
  
  bool HandleLinkedAccountsLink(
-@@ -621,7 +681,7 @@ bool HandleLinkedAccountsLink(
+@@ -621,7 +683,7 @@ bool HandleLinkedAccountsLink(
  	if (path == u"/linked"_q) {
  		for (const auto &[index, account] : Core::App().domain().accounts()) {
  			if (const auto session = account->maybeSession()) {
@@ -3009,10 +3011,10 @@ index cf79589dc7dc101628661ec6b715825104a1b9b2..825e75beaee0dbd8a62b9886401674d6
  	not_null<Window::SessionController*> controller);
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..28502f0182c54919070329aa0511e939825d0fd1
+index 0000000000000000000000000000000000000000..8a822e0ec47feafff6ca54dc3c50aafdbcf5c0ec
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp
-@@ -0,0 +1,1378 @@
+@@ -0,0 +1,1387 @@
 +#include "tele/tele_linked_accounts.h"
 +
 +#include "main/main_session.h"
@@ -3589,6 +3591,7 @@ index 0000000000000000000000000000000000000000..28502f0182c54919070329aa0511e939
 +				QRect rect,
 +				bool over) {
 +			PaintPlatformCard(p, rect, over, platform, status);
++		card->show();
 +		});
 +		card->setPointerCursor(platform.available || !accountId.isEmpty());
 +		card->setClickedCallback([=] {
@@ -3967,6 +3970,7 @@ index 0000000000000000000000000000000000000000..28502f0182c54919070329aa0511e939
 +		const auto open = Ui::CreateChild<Ui::LinkButton>(
 +			links,
 +			Tr(u"Open profile"_q));
++		open->show();
 +		const auto url = account.url;
 +		open->setClickedCallback([=] {
 +			UrlClickHandler::Open(url);
@@ -3976,6 +3980,7 @@ index 0000000000000000000000000000000000000000..28502f0182c54919070329aa0511e939
 +	const auto refresh = Ui::CreateChild<Ui::LinkButton>(
 +		links,
 +		Tr(u"Refresh details"_q));
++	refresh->show();
 +	refresh->setClickedCallback([=] {
 +		const auto platformId = account.platform;
 +		service->refreshAccount(id, crl::guard(context.box, [=](
@@ -4018,11 +4023,13 @@ index 0000000000000000000000000000000000000000..28502f0182c54919070329aa0511e939
 +		bar,
 +		rpl::single(Tr(u"Disconnect"_q)),
 +		st::attentionBoxButton);
++	disconnect->show();
 +	disconnect->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 +	const auto save = Ui::CreateChild<Ui::RoundButton>(
 +		bar,
 +		rpl::single(Tr(u"Save"_q)),
 +		st::defaultActiveButton);
++	save->show();
 +	save->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 +	bar->widthValue() | rpl::on_next([=](int width) {
 +		const auto side = CardScaled(kSide) - CardScaled(8);
@@ -4107,6 +4114,7 @@ index 0000000000000000000000000000000000000000..28502f0182c54919070329aa0511e939
 +		bar,
 +		rpl::single(Tr(u"Continue"_q)),
 +		st::defaultActiveButton);
++	next->show();
 +	next->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 +	bar->widthValue() | rpl::on_next([=](int width) {
 +		next->moveToRight(
@@ -4158,6 +4166,7 @@ index 0000000000000000000000000000000000000000..28502f0182c54919070329aa0511e939
 +		Side());
 +	card->resize(card->width(), CardScaled(64));
 +	const auto copy = Ui::CreateChild<Ui::LinkButton>(card, Tr(u"Copy"_q));
++	copy->show();
 +	copy->setClickedCallback([=] {
 +		QGuiApplication::clipboard()->setText(value);
 +		ShowToast(context, Tr(u"Copied."_q));
@@ -4233,11 +4242,13 @@ index 0000000000000000000000000000000000000000..28502f0182c54919070329aa0511e939
 +		bar,
 +		rpl::single(Tr(u"Delete draft"_q)),
 +		st::attentionBoxButton);
++	remove->show();
 +	remove->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 +	const auto verify = Ui::CreateChild<Ui::RoundButton>(
 +		bar,
 +		rpl::single(Tr(u"Verify"_q)),
 +		st::defaultActiveButton);
++	verify->show();
 +	verify->setTextTransform(Ui::RoundButtonTextTransform::NoTransform);
 +	bar->widthValue() | rpl::on_next([=](int width) {
 +		remove->moveToLeft(
