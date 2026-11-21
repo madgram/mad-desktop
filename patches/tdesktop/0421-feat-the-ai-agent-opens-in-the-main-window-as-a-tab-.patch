@@ -37,10 +37,10 @@ Subject: [PATCH] feat: the ai agent opens in the main window as a tab or a
  create mode 100644 Telegram/SourceFiles/tele/agent/agent_section.h
 
 diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
-index 17bd2ac1e750bb1ae4e6a5d6de802a98c2393446..48da1dd3cf71e0cdfe0fa0dec4a4ca68b221e461 100644
+index 938041788b0c4aa0fce0820ca41277ea70972c55..2dcd58fe45db061f70cfc5d59975bba3814e83c3 100644
 --- a/Telegram/CMakeLists.txt
 +++ b/Telegram/CMakeLists.txt
-@@ -2689,6 +2689,12 @@ PRIVATE
+@@ -2691,6 +2691,12 @@ PRIVATE
      tele/tele_card_widgets.h
      tele/agent/agent_auto_reply.cpp
      tele/agent/agent_auto_reply.h
@@ -54,10 +54,10 @@ index 17bd2ac1e750bb1ae4e6a5d6de802a98c2393446..48da1dd3cf71e0cdfe0fa0dec4a4ca68
      tele/agent/agent_panel.h
      tele/agent/agent_protocol.cpp
 diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
-index c8f7b4d304a971a5fdf3347a6ef200846701314e..061ef531442838d68ded2035cafd02bcaace48dc 100644
+index 492fa726672fd47035fd2bf12644ad915b74418a..f6a8ed35987a7cdbcd9cba2cb7956a919a3aaa1e 100644
 --- a/Telegram/Resources/langs/mad_ru.json
 +++ b/Telegram/Resources/langs/mad_ru.json
-@@ -2421,5 +2421,39 @@
+@@ -2426,5 +2426,39 @@
    "Could not refresh the account.": "Не получилось обновить данные.",
    "Could not start the domain check.": "Не получилось начать проверку домена.",
    "Could not check the domain.": "Не получилось проверить домен.",

@@ -5,8 +5,8 @@ Subject: [PATCH] feat: linked accounts show up as a card in profiles and get
  their own window
 
 ---
- Telegram/CMakeLists.txt                       |    7 +
- Telegram/Resources/langs/mad_ru.json          |   57 +-
+ Telegram/CMakeLists.txt                       |    9 +
+ Telegram/Resources/langs/mad_ru.json          |   62 +-
  Telegram/Resources/qrc/telegram/telegram.qrc  |    9 +
  Telegram/Resources/tele/platforms/discord.png |  Bin 0 -> 5106 bytes
  Telegram/Resources/tele/platforms/github.png  |  Bin 0 -> 6307 bytes
@@ -20,17 +20,19 @@ Subject: [PATCH] feat: linked accounts show up as a card in profiles and get
  .../info/profile/info_profile_actions.cpp     |    9 +-
  .../SourceFiles/tele/tele_card_widgets.cpp    |  458 ++++++
  Telegram/SourceFiles/tele/tele_card_widgets.h |  109 ++
- .../SourceFiles/tele/tele_linked_accounts.cpp | 1082 +++++++-------
+ .../SourceFiles/tele/tele_linked_accounts.cpp | 1082 +++++++------
  .../SourceFiles/tele/tele_linked_accounts.h   |    9 +-
- .../tele/tele_linked_accounts_box.cpp         | 1328 +++++++++++++++++
- .../tele/tele_linked_accounts_data.cpp        |  192 ++-
- .../tele/tele_linked_accounts_data.h          |   25 +
- .../tele/tele_linked_accounts_service.cpp     |  643 ++++++++
- .../tele/tele_linked_accounts_service.h       |  110 ++
- .../tele/tele_linked_accounts_ui.cpp          |  183 +++
- .../tele/tele_linked_accounts_ui.h            |   25 +
- .../tele/tests/mad_logic_tests.cpp            |   18 +
- 25 files changed, 3718 insertions(+), 546 deletions(-)
+ .../tele/tele_linked_accounts_box.cpp         | 1378 +++++++++++++++++
+ .../tele/tele_linked_accounts_data.cpp        |  213 ++-
+ .../tele/tele_linked_accounts_data.h          |   31 +
+ .../tele/tele_linked_accounts_icons.cpp       |  151 ++
+ .../tele/tele_linked_accounts_icons.h         |   10 +
+ .../tele/tele_linked_accounts_service.cpp     |  667 ++++++++
+ .../tele/tele_linked_accounts_service.h       |  114 ++
+ .../tele/tele_linked_accounts_ui.cpp          |  349 +++++
+ .../tele/tele_linked_accounts_ui.h            |   28 +
+ .../tele/tests/mad_logic_tests.cpp            |   36 +
+ 27 files changed, 4178 insertions(+), 546 deletions(-)
  create mode 100644 Telegram/Resources/tele/platforms/discord.png
  create mode 100644 Telegram/Resources/tele/platforms/github.png
  create mode 100644 Telegram/Resources/tele/platforms/gitlab.png
@@ -43,19 +45,23 @@ Subject: [PATCH] feat: linked accounts show up as a card in profiles and get
  create mode 100644 Telegram/SourceFiles/tele/tele_card_widgets.cpp
  create mode 100644 Telegram/SourceFiles/tele/tele_card_widgets.h
  create mode 100644 Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_linked_accounts_icons.cpp
+ create mode 100644 Telegram/SourceFiles/tele/tele_linked_accounts_icons.h
  create mode 100644 Telegram/SourceFiles/tele/tele_linked_accounts_service.cpp
  create mode 100644 Telegram/SourceFiles/tele/tele_linked_accounts_service.h
  create mode 100644 Telegram/SourceFiles/tele/tele_linked_accounts_ui.cpp
  create mode 100644 Telegram/SourceFiles/tele/tele_linked_accounts_ui.h
 
 diff --git a/Telegram/CMakeLists.txt b/Telegram/CMakeLists.txt
-index 5668bd3c79c1604c8c03b573a2515909830692e1..17bd2ac1e750bb1ae4e6a5d6de802a98c2393446 100644
+index 5668bd3c79c1604c8c03b573a2515909830692e1..938041788b0c4aa0fce0820ca41277ea70972c55 100644
 --- a/Telegram/CMakeLists.txt
 +++ b/Telegram/CMakeLists.txt
-@@ -2680,6 +2680,13 @@ PRIVATE
+@@ -2680,6 +2680,15 @@ PRIVATE
      tele/tele_linked_accounts.h
      tele/tele_linked_accounts_data.cpp
      tele/tele_linked_accounts_data.h
++    tele/tele_linked_accounts_icons.cpp
++    tele/tele_linked_accounts_icons.h
 +    tele/tele_linked_accounts_box.cpp
 +    tele/tele_linked_accounts_service.cpp
 +    tele/tele_linked_accounts_service.h
@@ -67,10 +73,10 @@ index 5668bd3c79c1604c8c03b573a2515909830692e1..17bd2ac1e750bb1ae4e6a5d6de802a98
      tele/agent/agent_auto_reply.h
      tele/agent/agent_panel.cpp
 diff --git a/Telegram/Resources/langs/mad_ru.json b/Telegram/Resources/langs/mad_ru.json
-index 60befdaacd757c1a05df05d1128b9b6690088499..c8f7b4d304a971a5fdf3347a6ef200846701314e 100644
+index 60befdaacd757c1a05df05d1128b9b6690088499..492fa726672fd47035fd2bf12644ad915b74418a 100644
 --- a/Telegram/Resources/langs/mad_ru.json
 +++ b/Telegram/Resources/langs/mad_ru.json
-@@ -2366,5 +2366,60 @@
+@@ -2366,5 +2366,65 @@
    "Companion in private chats": "Компаньон в личных чатах",
    "A small animated duck above the message field in chats with people: drag it to move, scroll over it to resize.": "Маленькая анимированная утка над полем ввода в переписках с людьми: перетащи, чтобы подвинуть, покрути колесо над ней, чтобы изменить размер.",
    "Companion placement": "Место компаньона",
@@ -115,6 +121,11 @@ index 60befdaacd757c1a05df05d1128b9b6690088499..c8f7b4d304a971a5fdf3347a6ef20084
 +  "Refresh details": "Обновить данные",
 +  "Sign in to the platform again.": "Войди на площадку ещё раз.",
 +  "Details updated.": "Данные обновлены.",
++  "Icon": "Иконка",
++  "Globe": "Глобус",
++  "Site favicon": "Фавикон сайта",
++  "b.mad.tg takes the icon from the site. It hasn't got one yet: press \"Refresh details\" below.": "b.mad.tg берёт иконку с сайта. Её пока нет: нажми «Обновить данные» ниже.",
++  "b.mad.tg takes the icon from the site. Press \"Refresh details\" if the site changed it.": "b.mad.tg берёт иконку с сайта. Если на сайте она поменялась, нажми «Обновить данные».",
 +  "Disconnect": "Отключить",
 +  "Disconnect %1? It will disappear from your profile.": "Отключить %1? Аккаунт пропадёт из профиля.",
 +  "Your domain": "Свой домен",
@@ -1771,7 +1782,7 @@ index 0000000000000000000000000000000000000000..178ecb2678556141b8175e648412c85b
 +
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts.cpp
-index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..858fa4b2305c9ddcc8733f75203e0fcccb5a241b 100644
+index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..edc25236bdc2503da4af7f6712271bc9742c55aa 100644
 --- a/Telegram/SourceFiles/tele/tele_linked_accounts.cpp
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts.cpp
 @@ -1,614 +1,674 @@
@@ -1905,7 +1916,7 @@ index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..858fa4b2305c9ddcc8733f75203e0fcc
 +	const auto iconSize = CardScaled(kRowIcon);
 +	p.drawImage(
 +		QRect(padding, (height - iconSize) / 2, iconSize, iconSize),
-+		LinkedPlatformIcon(account.platform, iconSize));
++		LinkedAccountIcon(account, iconSize));
 +
 +	const auto textLeft = padding + iconSize + CardScaled(12);
 +	const auto arrow = CardScaled(11);
@@ -2440,7 +2451,7 @@ index 47b108c3c73299e3c21eb30ce228a8f4a657bda4..858fa4b2305c9ddcc8733f75203e0fcc
 -			return;
 +		p.drawImage(
 +			QRect(left, (height - icon) / 2, icon, icon),
-+			LinkedPlatformIcon(chip.account.platform, icon));
++			LinkedAccountIcon(chip.account, icon));
 +		const auto textLeft = left + icon + CardScaled(8);
 +		p.setFont(font);
 +		p.setPen(st::windowBoldFg);
@@ -2998,10 +3009,10 @@ index cf79589dc7dc101628661ec6b715825104a1b9b2..825e75beaee0dbd8a62b9886401674d6
  	not_null<Window::SessionController*> controller);
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b788e28888
+index 0000000000000000000000000000000000000000..28502f0182c54919070329aa0511e939825d0fd1
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_box.cpp
-@@ -0,0 +1,1328 @@
+@@ -0,0 +1,1378 @@
 +#include "tele/tele_linked_accounts.h"
 +
 +#include "main/main_session.h"
@@ -3065,6 +3076,7 @@ index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b7
 +	Ui::VerticalLayout *footer = nullptr;
 +	rpl::variable<bool> visibleDraft = true;
 +	rpl::variable<QString> labelDraft;
++	rpl::variable<QString> iconDraft;
 +	bool rebuildScheduled = false;
 +};
 +
@@ -3211,7 +3223,7 @@ index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b7
 +	const auto icon = CardScaled(kAccountIcon);
 +	p.drawImage(
 +		QRect(side, (height - icon) / 2, icon, icon),
-+		LinkedPlatformIcon(account.platform, icon));
++		LinkedAccountIcon(account, icon));
 +	const auto chevron = CardScaled(12);
 +	const auto valueFont = CardFont(14, false);
 +	const auto valueWidth = value.isEmpty() ? 0 : valueFont->width(value);
@@ -3727,6 +3739,14 @@ index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b7
 +	state->title = Tr(u"Account visibility"_q);
 +	state->visibleDraft = account.visible;
 +	state->labelDraft = account.label;
++	state->iconDraft = account.icon;
++	const auto domain = (account.platform == u"domain"_q);
++	const auto drafted = [=] {
++		auto result = account;
++		result.label = state->labelDraft.current();
++		result.icon = state->iconDraft.current();
++		return result;
++	};
 +
 +	AddSkip(content, 20);
 +	const auto header = content->add(object_ptr<Ui::RpWidget>(content));
@@ -3737,7 +3757,7 @@ index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b7
 +		const auto icon = CardScaled(64);
 +		p.drawImage(
 +			QRect((width - icon) / 2, 0, icon, icon),
-+			LinkedPlatformIcon(account.platform, icon));
++			LinkedAccountIcon(drafted(), icon));
 +		const auto titleFont = CardFont(22, true);
 +		const auto subtitleFont = CardFont(14, false);
 +		const auto verified = account.verified
@@ -3772,6 +3792,9 @@ index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b7
 +			titleTop + titleFont->height + CardScaled(4)
 +				+ subtitleFont->ascent,
 +			subtitle);
++	}, header->lifetime());
++	state->iconDraft.changes() | rpl::on_next([=] {
++		header->update();
 +	}, header->lifetime());
 +	AddSkip(content, 8);
 +
@@ -3839,6 +3862,40 @@ index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b7
 +			[=] { state->labelDraft = u"name"_q; });
 +	}
 +
++	if (domain) {
++		AddSkip(content, 20);
++		AddLabel(content, Tr(u"Icon"_q), CardTitleStyle(), Side());
++		AddSkip(content, 10);
++		AddRadioRow(
++			content,
++			Tr(u"Globe"_q),
++			QString(),
++			state->iconDraft.value() | rpl::map([](const QString &icon) {
++				return (icon != u"favicon"_q);
++			}),
++			true,
++			[=] { state->iconDraft = u"default"_q; });
++		AddRadioRow(
++			content,
++			Tr(u"Site favicon"_q),
++			QString(),
++			state->iconDraft.value() | rpl::map([](const QString &icon) {
++				return (icon == u"favicon"_q);
++			}),
++			false,
++			[=] { state->iconDraft = u"favicon"_q; });
++		AddSkip(content, 10);
++		AddLabel(
++			content,
++			(account.favicon.isEmpty()
++				? Tr(u"b.mad.tg takes the icon from the site. It hasn't "
++					"got one yet: press \"Refresh details\" below."_q)
++				: Tr(u"b.mad.tg takes the icon from the site. Press "
++					"\"Refresh details\" if the site changed it."_q)),
++			CardCaptionStyle(),
++			Side());
++	}
++
 +	AddSkip(content, 20);
 +	AddLabel(content, Tr(u"Preview"_q), CardTitleStyle(), Side());
 +	AddSkip(content, 10);
@@ -3847,8 +3904,7 @@ index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b7
 +	preview->paintRequest() | rpl::on_next([=] {
 +		auto p = QPainter(preview);
 +		auto hq = PainterHighQualityEnabler(p);
-+		auto shown = account;
-+		shown.label = state->labelDraft.current();
++		const auto shown = drafted();
 +		const auto text = LinkedAccountTitle(shown);
 +		const auto font = CardFont(14, true);
 +		const auto icon = CardScaled(24);
@@ -3877,7 +3933,7 @@ index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b7
 +				(rect.height() - icon) / 2,
 +				icon,
 +				icon),
-+			LinkedPlatformIcon(account.platform, icon));
++			LinkedAccountIcon(shown, icon));
 +		const auto textLeft = rect.x() + padding + icon + CardScaled(8);
 +		p.setFont(font);
 +		p.setPen(st::windowBoldFg);
@@ -3896,7 +3952,8 @@ index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b7
 +	}, preview->lifetime());
 +	rpl::merge(
 +		state->visibleDraft.changes() | rpl::to_empty,
-+		state->labelDraft.changes() | rpl::to_empty
++		state->labelDraft.changes() | rpl::to_empty,
++		state->iconDraft.changes() | rpl::to_empty
 +	) | rpl::on_next([=] {
 +		preview->update();
 +	}, preview->lifetime());
@@ -4008,6 +4065,10 @@ index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b7
 +		}
 +		if (label != account.label && LinkedAccountHasLabelChoice(account)) {
 +			service->setLabel(id, label, report);
++		}
++		const auto icon = state->iconDraft.current();
++		if (domain && icon != account.icon) {
++			service->setIcon(id, icon, report);
 +		}
 +		Back(context);
 +	});
@@ -4331,7 +4392,7 @@ index 0000000000000000000000000000000000000000..1052b847d63d954fc6a7f01cee12b1b7
 +
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_data.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts_data.cpp
-index ee69b60c8b3f0aaf3b670d60586660c1193eafb1..683604e0da23d6ca60e3cb4f3885fef4d1d4c4fa 100644
+index ee69b60c8b3f0aaf3b670d60586660c1193eafb1..b21b0d6fa006ba3703dddff29e686f3616ab3837 100644
 --- a/Telegram/SourceFiles/tele/tele_linked_accounts_data.cpp
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_data.cpp
 @@ -6,6 +6,7 @@
@@ -4342,18 +4403,25 @@ index ee69b60c8b3f0aaf3b670d60586660c1193eafb1..683604e0da23d6ca60e3cb4f3885fef4
  #include <utility>
  
  namespace Tele {
-@@ -13,6 +14,7 @@ namespace {
+@@ -13,6 +14,8 @@ namespace {
  
  constexpr auto kMaxAccounts = 64;
  constexpr auto kMaxText = 256;
 +constexpr auto kMaxDomain = 253;
++constexpr auto kMaxIconUrl = 512;
  
  [[nodiscard]] QString Text(const QJsonObject &object, const char *key) {
  	const auto value = object.value(QLatin1String(key));
-@@ -21,6 +23,61 @@ constexpr auto kMaxText = 256;
+@@ -21,6 +24,70 @@ constexpr auto kMaxText = 256;
  		: QString();
  }
  
++[[nodiscard]] QString IconUrl(const QJsonObject &object, const char *key) {
++	const auto value = object.value(QLatin1String(key));
++	const auto url = value.isString() ? value.toString().trimmed() : QString();
++	return IsLinkedIconUrl(url) ? url : QString();
++}
++
 +[[nodiscard]] bool Flag(const QJsonValue &value, bool fallback) {
 +	if (value.isBool()) {
 +		return value.toBool();
@@ -4394,6 +4462,9 @@ index ee69b60c8b3f0aaf3b670d60586660c1193eafb1..683604e0da23d6ca60e3cb4f3885fef4
 +		.icon = (icon == QStringLiteral("favicon"))
 +			? icon
 +			: QStringLiteral("default"),
++		.platformName = Text(object, "platformName"),
++		.platformIcon = IconUrl(object, "platformIcon"),
++		.favicon = IconUrl(object, "favicon"),
 +		.position = position.isDouble() ? position.toInt() : index,
 +		.verified = Flag(object.value(QStringLiteral("verified")), false),
 +		.visible = Flag(object.value(QStringLiteral("visible")), true),
@@ -4412,7 +4483,7 @@ index ee69b60c8b3f0aaf3b670d60586660c1193eafb1..683604e0da23d6ca60e3cb4f3885fef4
  } // namespace
  
  QString InitDataFromWebViewUrl(const QString &url) {
-@@ -40,45 +97,58 @@ QString InitDataFromWebViewUrl(const QString &url) {
+@@ -40,45 +107,58 @@ QString InitDataFromWebViewUrl(const QString &url) {
  		: fromFragment;
  }
  
@@ -4498,7 +4569,7 @@ index ee69b60c8b3f0aaf3b670d60586660c1193eafb1..683604e0da23d6ca60e3cb4f3885fef4
  		if (!entry.isObject()) {
  			continue;
  		}
-@@ -87,20 +157,48 @@ std::vector<LinkedPlatform> ParseLinkedPlatforms(const QByteArray &json) {
+@@ -87,20 +167,49 @@ std::vector<LinkedPlatform> ParseLinkedPlatforms(const QByteArray &json) {
  			.id = Text(object, "id"),
  			.name = Text(object, "name"),
  			.category = Text(object, "category"),
@@ -4506,6 +4577,7 @@ index ee69b60c8b3f0aaf3b670d60586660c1193eafb1..683604e0da23d6ca60e3cb4f3885fef4
 -			.needsClientId = object.value(
 -				QStringLiteral("needsClientId")).toBool(),
 +			.method = Text(object, "method"),
++			.icon = IconUrl(object, "icon"),
 +			.available = Flag(object.value(QStringLiteral("available")), false),
 +			.needsClientId = Flag(
 +				object.value(QStringLiteral("needsClientId")),
@@ -4550,7 +4622,7 @@ index ee69b60c8b3f0aaf3b670d60586660c1193eafb1..683604e0da23d6ca60e3cb4f3885fef4
  QString ParseLinkedToken(const QByteArray &json) {
  	const auto document = QJsonDocument::fromJson(json);
  	return document.isObject()
-@@ -119,6 +217,7 @@ QString LinkedPlatformTitle(const QString &platform) {
+@@ -119,6 +228,7 @@ QString LinkedPlatformTitle(const QString &platform) {
  		{ QStringLiteral("reddit"), QStringLiteral("Reddit") },
  		{ QStringLiteral("soundcloud"), QStringLiteral("SoundCloud") },
  		{ QStringLiteral("lastfm"), QStringLiteral("Last.fm") },
@@ -4558,7 +4630,7 @@ index ee69b60c8b3f0aaf3b670d60586660c1193eafb1..683604e0da23d6ca60e3cb4f3885fef4
  	};
  	for (const auto &[id, title] : known) {
  		if (id == platform) {
-@@ -130,6 +229,24 @@ QString LinkedPlatformTitle(const QString &platform) {
+@@ -130,6 +240,34 @@ QString LinkedPlatformTitle(const QString &platform) {
  		: platform.left(1).toUpper() + platform.mid(1);
  }
  
@@ -4580,10 +4652,20 @@ index ee69b60c8b3f0aaf3b670d60586660c1193eafb1..683604e0da23d6ca60e3cb4f3885fef4
 +		&& (account.displayName != account.handle);
 +}
 +
++bool LinkedAccountUsesFavicon(const LinkedAccount &account) {
++	return (account.platform == QStringLiteral("domain"))
++		&& (account.icon == QStringLiteral("favicon"))
++		&& !account.favicon.isEmpty();
++}
++
++bool IsLinkedIconUrl(const QString &url) {
++	return (url.size() <= kMaxIconUrl) && IsSafeLinkedUrl(url);
++}
++
  bool IsSafeLinkedUrl(const QString &url) {
  	const auto parsed = QUrl(url, QUrl::StrictMode);
  	return parsed.isValid()
-@@ -138,4 +255,19 @@ bool IsSafeLinkedUrl(const QString &url) {
+@@ -138,4 +276,19 @@ bool IsSafeLinkedUrl(const QString &url) {
  		&& parsed.userInfo().isEmpty();
  }
  
@@ -4604,7 +4686,7 @@ index ee69b60c8b3f0aaf3b670d60586660c1193eafb1..683604e0da23d6ca60e3cb4f3885fef4
 +
  } // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_data.h b/Telegram/SourceFiles/tele/tele_linked_accounts_data.h
-index 9591245fbe85e919d1c57c5fdbdcd30be6776dbc..44643ed62df3b6e8ae42d1bb5dae6a4c889822d5 100644
+index 9591245fbe85e919d1c57c5fdbdcd30be6776dbc..8a6a011a86d3be2db2540b8b3e4a0e9d9d7ac12d 100644
 --- a/Telegram/SourceFiles/tele/tele_linked_accounts_data.h
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_data.h
 @@ -3,6 +3,7 @@
@@ -4615,12 +4697,15 @@ index 9591245fbe85e919d1c57c5fdbdcd30be6776dbc..44643ed62df3b6e8ae42d1bb5dae6a4c
  #include <vector>
  
  namespace Tele {
-@@ -13,26 +14,50 @@ struct LinkedAccount {
+@@ -13,26 +14,56 @@ struct LinkedAccount {
  	QString handle;
  	QString displayName;
  	QString url;
 +	QString label;
 +	QString icon;
++	QString platformName;
++	QString platformIcon;
++	QString favicon;
 +	int position = 0;
  	bool verified = false;
  	bool visible = true;
@@ -4637,6 +4722,7 @@ index 9591245fbe85e919d1c57c5fdbdcd30be6776dbc..44643ed62df3b6e8ae42d1bb5dae6a4c
  	QString name;
  	QString category;
 +	QString method;
++	QString icon;
  	bool available = false;
  	bool needsClientId = false;
  };
@@ -4662,16 +4748,191 @@ index 9591245fbe85e919d1c57c5fdbdcd30be6776dbc..44643ed62df3b6e8ae42d1bb5dae6a4c
  [[nodiscard]] QString LinkedPlatformTitle(const QString &platform);
 +[[nodiscard]] QString LinkedAccountTitle(const LinkedAccount &account);
 +[[nodiscard]] bool LinkedAccountHasLabelChoice(const LinkedAccount &account);
++[[nodiscard]] bool LinkedAccountUsesFavicon(const LinkedAccount &account);
  [[nodiscard]] bool IsSafeLinkedUrl(const QString &url);
++[[nodiscard]] bool IsLinkedIconUrl(const QString &url);
 +[[nodiscard]] bool IsLinkedDomain(const QString &value);
  
  } // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_icons.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts_icons.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..3f30f16a0a12e558e1649c96d886014a13e92520
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_linked_accounts_icons.cpp
+@@ -0,0 +1,151 @@
++#include "tele/tele_linked_accounts_icons.h"
++
++#include "settings.h"
++#include "tele/tele_launch_flags.h"
++#include "tele/tele_linked_accounts_data.h"
++
++#include <QtCore/QCoreApplication>
++#include <QtCore/QCryptographicHash>
++#include <QtCore/QDir>
++#include <QtCore/QFile>
++#include <QtCore/QPointer>
++#include <QtCore/QSaveFile>
++#include <QtCore/QUrl>
++#include <QtNetwork/QNetworkAccessManager>
++#include <QtNetwork/QNetworkReply>
++#include <QtNetwork/QNetworkRequest>
++
++namespace Tele {
++namespace {
++
++constexpr auto kMaxBytes = 512 * 1024;
++constexpr auto kMaxSide = 2048;
++constexpr auto kRetryAfter = crl::time(5 * 60 * 1000);
++constexpr auto kTimeout = 15000;
++
++[[nodiscard]] bool Allowed(const QString &url) {
++	return IsLinkedIconUrl(url)
++		&& (QUrl(url).host().compare(u"b.mad.tg"_q, Qt::CaseInsensitive) == 0);
++}
++
++class Loader final : public QObject {
++public:
++	explicit Loader(QObject *parent) : QObject(parent) {
++	}
++
++	[[nodiscard]] QImage image(const QString &url) {
++		if (const auto i = _images.find(url); i != end(_images)) {
++			return i->second;
++		} else if (!Allowed(url) || _loading.contains(url)) {
++			return QImage();
++		}
++		if (const auto i = _failed.find(url); i != end(_failed)) {
++			if (crl::now() - i->second < kRetryAfter) {
++				return QImage();
++			}
++			_failed.erase(i);
++		}
++		auto file = QFile(path(url));
++		if (file.open(QIODevice::ReadOnly)) {
++			auto result = Decode(file.read(kMaxBytes + 1));
++			if (!result.isNull()) {
++				_images.emplace(url, result);
++				return result;
++			}
++		}
++		load(url);
++		return QImage();
++	}
++
++	[[nodiscard]] rpl::producer<> loaded() const {
++		return _loaded.events();
++	}
++
++private:
++	[[nodiscard]] static QImage Decode(const QByteArray &bytes) {
++		if (bytes.isEmpty() || bytes.size() > kMaxBytes) {
++			return QImage();
++		}
++		auto result = QImage::fromData(bytes);
++		if (result.isNull()
++			|| result.width() > kMaxSide
++			|| result.height() > kMaxSide) {
++			return QImage();
++		}
++		return result.convertToFormat(QImage::Format_ARGB32_Premultiplied);
++	}
++
++	[[nodiscard]] static QString folder() {
++		return cWorkingDir() + u"tdata/mad_links/"_q;
++	}
++
++	[[nodiscard]] static QString path(const QString &url) {
++		const auto hash = QCryptographicHash::hash(
++			url.toUtf8(),
++			QCryptographicHash::Sha1).toHex();
++		return folder() + QString::fromLatin1(hash) + u".png"_q;
++	}
++
++	void load(const QString &url) {
++		if (OfflineForLaunch() || ServerOffForLaunch()) {
++			return;
++		}
++		_loading.emplace(url);
++		auto request = QNetworkRequest(QUrl(url));
++		request.setAttribute(
++			QNetworkRequest::RedirectPolicyAttribute,
++			QNetworkRequest::NoLessSafeRedirectPolicy);
++		request.setRawHeader("User-Agent", "mad/1");
++		request.setTransferTimeout(kTimeout);
++		const auto reply = _network.get(request);
++		connect(reply, &QNetworkReply::finished, this, [=] {
++			const auto status = reply->attribute(
++				QNetworkRequest::HttpStatusCodeAttribute).toInt();
++			const auto bytes = reply->read(kMaxBytes + 1);
++			reply->deleteLater();
++			_loading.remove(url);
++			const auto result = (status == 200)
++				? Decode(bytes)
++				: QImage();
++			if (result.isNull()) {
++				_failed[url] = crl::now();
++				return;
++			}
++			QDir().mkpath(folder());
++			auto file = QSaveFile(path(url));
++			if (file.open(QIODevice::WriteOnly)) {
++				file.write(bytes);
++				file.commit();
++			}
++			_images[url] = result;
++			_loaded.fire({});
++		});
++	}
++
++	QNetworkAccessManager _network;
++	base::flat_map<QString, QImage> _images;
++	base::flat_set<QString> _loading;
++	base::flat_map<QString, crl::time> _failed;
++	rpl::event_stream<> _loaded;
++
++};
++
++[[nodiscard]] Loader &Instance() {
++	static auto result = QPointer<Loader>();
++	if (!result) {
++		result = new Loader(QCoreApplication::instance());
++	}
++	return *result;
++}
++
++} // namespace
++
++QImage LinkedRemoteIcon(const QString &url) {
++	return url.isEmpty() ? QImage() : Instance().image(url);
++}
++
++rpl::producer<> LinkedRemoteIconsLoaded() {
++	return Instance().loaded();
++}
++
++} // namespace Tele
+diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_icons.h b/Telegram/SourceFiles/tele/tele_linked_accounts_icons.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..8726095533704214ac7182e11f8fb8fc3efd9644
+--- /dev/null
++++ b/Telegram/SourceFiles/tele/tele_linked_accounts_icons.h
+@@ -0,0 +1,10 @@
++#pragma once
++
++#include <QtGui/QImage>
++
++namespace Tele {
++
++[[nodiscard]] QImage LinkedRemoteIcon(const QString &url);
++[[nodiscard]] rpl::producer<> LinkedRemoteIconsLoaded();
++
++} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_service.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts_service.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..4f8a48799808648998c38d4ba4210e41bfd6b649
+index 0000000000000000000000000000000000000000..d0ba4f19fba1dbbb313611671467c0c142dd7fee
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_service.cpp
-@@ -0,0 +1,643 @@
+@@ -0,0 +1,667 @@
 +#include "tele/tele_linked_accounts_service.h"
 +
 +#include "apiwrap.h"
@@ -4679,6 +4940,7 @@ index 0000000000000000000000000000000000000000..4f8a48799808648998c38d4ba4210e41
 +#include "data/data_user.h"
 +#include "main/main_session.h"
 +#include "tele/tele_launch_flags.h"
++#include "tele/tele_linked_accounts_ui.h"
 +#include "tele/tele_lowercase.h"
 +
 +#include <QtCore/QJsonDocument>
@@ -4741,6 +5003,9 @@ index 0000000000000000000000000000000000000000..4f8a48799808648998c38d4ba4210e41
 +		&& (a.url == b.url)
 +		&& (a.label == b.label)
 +		&& (a.icon == b.icon)
++		&& (a.platformName == b.platformName)
++		&& (a.platformIcon == b.platformIcon)
++		&& (a.favicon == b.favicon)
 +		&& (a.verified == b.verified)
 +		&& (a.visible == b.visible)
 +		&& (a.hiddenByAdmin == b.hiddenByAdmin);
@@ -4972,6 +5237,7 @@ index 0000000000000000000000000000000000000000..4f8a48799808648998c38d4ba4210e41
 +		auto profile = LinkedProfile{ .design = u"row"_q };
 +		if (status == 200) {
 +			profile = PublicProfile(ParseLinkedProfile(bytes));
++			RememberLinkedAccounts(profile.accounts);
 +		} else if (status != 404) {
 +			return;
 +		}
@@ -5017,6 +5283,7 @@ index 0000000000000000000000000000000000000000..4f8a48799808648998c38d4ba4210e41
 +			QByteArray bytes) {
 +		if (weak && status == 200) {
 +			_platforms = ParseLinkedPlatforms(bytes);
++			RememberLinkedPlatforms(_platforms);
 +			_mineUpdates.fire({});
 +		}
 +	});
@@ -5049,6 +5316,7 @@ index 0000000000000000000000000000000000000000..4f8a48799808648998c38d4ba4210e41
 +void LinkedAccountsService::applyMine(LinkedProfile profile) {
 +	_mine = std::move(profile);
 +	_mineLoaded = true;
++	RememberLinkedAccounts(_mine.accounts);
 +	for (const auto &account : _mine.accounts) {
 +		if (account.platform != u"domain"_q) {
 +			continue;
@@ -5127,6 +5395,23 @@ index 0000000000000000000000000000000000000000..4f8a48799808648998c38d4ba4210e41
 +	update(
 +		id,
 +		Json(QJsonObject{ { u"label"_q, label } }),
++		std::move(changed),
++		std::move(done));
++}
++
++void LinkedAccountsService::setIcon(
++		const QString &id,
++		const QString &icon,
++		Fn<void(QString)> done) {
++	auto changed = _mine;
++	for (auto &account : changed.accounts) {
++		if (account.id == id) {
++			account.icon = icon;
++		}
++	}
++	update(
++		id,
++		Json(QJsonObject{ { u"icon"_q, icon } }),
 +		std::move(changed),
 +		std::move(done));
 +}
@@ -5317,10 +5602,10 @@ index 0000000000000000000000000000000000000000..4f8a48799808648998c38d4ba4210e41
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_service.h b/Telegram/SourceFiles/tele/tele_linked_accounts_service.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..09366a1f28ce56fd87d65a4a43cf70e7152fa8f9
+index 0000000000000000000000000000000000000000..7c4810b9bf95e6526d2144562d603d94cecf1475
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_service.h
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,114 @@
 +#pragma once
 +
 +#include "base/weak_ptr.h"
@@ -5365,6 +5650,10 @@ index 0000000000000000000000000000000000000000..09366a1f28ce56fd87d65a4a43cf70e7
 +	void setLabel(
 +		const QString &id,
 +		const QString &label,
++		Fn<void(QString)> done);
++	void setIcon(
++		const QString &id,
++		const QString &icon,
 +		Fn<void(QString)> done);
 +	void setDesign(const QString &design, Fn<void(QString)> done);
 +	void refreshAccount(
@@ -5433,12 +5722,13 @@ index 0000000000000000000000000000000000000000..09366a1f28ce56fd87d65a4a43cf70e7
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_ui.cpp b/Telegram/SourceFiles/tele/tele_linked_accounts_ui.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..631149f7dbaba2d242e3e6867790c664fccd61a7
+index 0000000000000000000000000000000000000000..fb03ecd2e7128a6674389d21aa34990f767bfd46
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_ui.cpp
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,349 @@
 +#include "tele/tele_linked_accounts_ui.h"
 +
++#include "tele/tele_linked_accounts_icons.h"
 +#include "tele/tele_lowercase.h"
 +#include "ui/painter.h"
 +#include "ui/style/style_core_scale.h"
@@ -5449,11 +5739,138 @@ index 0000000000000000000000000000000000000000..631149f7dbaba2d242e3e6867790c664
 +#include <QtCore/QFile>
 +#include <QtGui/QPainter>
 +#include <QtGui/QPainterPath>
++#include <QtWidgets/QApplication>
++#include <QtWidgets/QWidget>
 +
 +#include <cmath>
 +
 +namespace Tele {
 +namespace {
++
++constexpr auto kIconRadius = 0.233;
++constexpr auto kTileInset = 0.14;
++
++struct KnownPlatform {
++	QString name;
++	QString icon;
++};
++
++[[nodiscard]] base::flat_map<QString, KnownPlatform> &Known() {
++	static auto result = base::flat_map<QString, KnownPlatform>();
++	return result;
++}
++
++[[nodiscard]] base::flat_map<QString, QImage> &Rendered() {
++	static auto result = base::flat_map<QString, QImage>();
++	return result;
++}
++
++void WatchRemoteIcons() {
++	static auto lifetime = rpl::lifetime();
++	static auto watching = false;
++	if (watching) {
++		return;
++	}
++	watching = true;
++	LinkedRemoteIconsLoaded() | rpl::on_next([] {
++		for (const auto widget : QApplication::topLevelWidgets()) {
++			if (widget->isVisible()) {
++				widget->update();
++			}
++		}
++	}, lifetime);
++}
++
++void Remember(const QString &id, const QString &name, const QString &icon) {
++	if (id.isEmpty() || id == u"domain"_q) {
++		return;
++	}
++	auto &known = Known()[id];
++	if (!name.isEmpty()) {
++		known.name = name;
++	}
++	if (!icon.isEmpty()) {
++		known.icon = icon;
++	}
++}
++
++[[nodiscard]] bool NeedsTile(const QImage &image) {
++	const auto w = image.width();
++	const auto h = image.height();
++	if (w < 2 || h < 2) {
++		return true;
++	}
++	const auto corners = {
++		image.pixelColor(0, 0),
++		image.pixelColor(w - 1, 0),
++		image.pixelColor(0, h - 1),
++		image.pixelColor(w - 1, h - 1),
++	};
++	for (const auto &color : corners) {
++		if (color.alpha() < 128) {
++			return true;
++		}
++	}
++	return false;
++}
++
++[[nodiscard]] QImage RoundedIcon(
++		const QImage &source,
++		int pixels,
++		bool tile) {
++	auto result = QImage(
++		QSize(pixels, pixels),
++		QImage::Format_ARGB32_Premultiplied);
++	result.fill(Qt::transparent);
++	auto p = QPainter(&result);
++	auto hq = PainterHighQualityEnabler(p);
++	const auto rect = QRectF(0, 0, pixels, pixels);
++	const auto radius = pixels * kIconRadius;
++	auto path = QPainterPath();
++	path.addRoundedRect(rect, radius, radius);
++	p.setClipPath(path);
++	if (tile) {
++		p.fillRect(rect, QColor(255, 255, 255));
++		const auto inner = rect.marginsRemoved(QMarginsF(
++			pixels * kTileInset,
++			pixels * kTileInset,
++			pixels * kTileInset,
++			pixels * kTileInset));
++		const auto scaled = QSizeF(source.size()).scaled(
++			inner.size(),
++			Qt::KeepAspectRatio);
++		p.drawImage(
++			QRectF(
++				inner.x() + (inner.width() - scaled.width()) / 2.,
++				inner.y() + (inner.height() - scaled.height()) / 2.,
++				scaled.width(),
++				scaled.height()),
++			source);
++	} else {
++		p.drawImage(rect, source);
++	}
++	p.end();
++	return result;
++}
++
++[[nodiscard]] QImage RemoteIcon(const QString &url, int size, bool tile) {
++	WatchRemoteIcons();
++	const auto source = LinkedRemoteIcon(url);
++	if (source.isNull()) {
++		return QImage();
++	}
++	const auto ratio = style::DevicePixelRatio();
++	const auto pixels = std::max(size, 1) * ratio;
++	const auto key = url + QChar('/') + QString::number(pixels);
++	auto &rendered = Rendered();
++	if (const auto i = rendered.find(key); i != end(rendered)) {
++		return i->second;
++	}
++	auto result = RoundedIcon(source, pixels, tile && NeedsTile(source));
++	result.setDevicePixelRatio(ratio);
++	rendered.emplace(key, result);
++	return result;
++}
 +
 +[[nodiscard]] bool HasBundledIcon(const QString &platform) {
 +	static const auto known = std::vector<QString>{
@@ -5519,7 +5936,7 @@ index 0000000000000000000000000000000000000000..631149f7dbaba2d242e3e6867790c664
 +				side),
 +			QColor(255, 255, 255));
 +	} else {
-+		const auto letter = LinkedPlatformTitle(platform).left(1).toUpper();
++		const auto letter = LinkedPlatformName(platform).left(1).toUpper();
 +		auto font = st::semiboldFont->f;
 +		font.setPixelSize(std::max(int(std::round(pixels * 0.47)), 1));
 +		p.setFont(font);
@@ -5532,13 +5949,51 @@ index 0000000000000000000000000000000000000000..631149f7dbaba2d242e3e6867790c664
 +
 +} // namespace
 +
++void RememberLinkedPlatforms(const std::vector<LinkedPlatform> &platforms) {
++	for (const auto &platform : platforms) {
++		Remember(platform.id, platform.name, platform.icon);
++	}
++}
++
++void RememberLinkedAccounts(const std::vector<LinkedAccount> &accounts) {
++	for (const auto &account : accounts) {
++		Remember(account.platform, account.platformName, account.platformIcon);
++	}
++}
++
 +QString LinkedPlatformName(const QString &platform) {
-+	return (platform == u"domain"_q)
-+		? Tr(u"Domain"_q)
-+		: LinkedPlatformTitle(platform);
++	if (platform == u"domain"_q) {
++		return Tr(u"Domain"_q);
++	}
++	const auto &known = Known();
++	if (const auto i = known.find(platform); i != end(known)) {
++		if (!i->second.name.isEmpty()) {
++			return i->second.name;
++		}
++	}
++	return LinkedPlatformTitle(platform);
++}
++
++QImage LinkedAccountIcon(const LinkedAccount &account, int size) {
++	if (LinkedAccountUsesFavicon(account)) {
++		const auto result = RemoteIcon(account.favicon, size, true);
++		if (!result.isNull()) {
++			return result;
++		}
++	}
++	return LinkedPlatformIcon(account.platform, size);
 +}
 +
 +QImage LinkedPlatformIcon(const QString &platform, int size) {
++	const auto &known = Known();
++	if (const auto i = known.find(platform); i != end(known)) {
++		if (!i->second.icon.isEmpty()) {
++			const auto result = RemoteIcon(i->second.icon, size, false);
++			if (!result.isNull()) {
++				return result;
++			}
++		}
++	}
 +	static auto cache = base::flat_map<QString, QImage>();
 +	const auto ratio = style::DevicePixelRatio();
 +	const auto pixels = std::max(size, 1) * ratio;
@@ -5622,10 +6077,10 @@ index 0000000000000000000000000000000000000000..631149f7dbaba2d242e3e6867790c664
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tele_linked_accounts_ui.h b/Telegram/SourceFiles/tele/tele_linked_accounts_ui.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..fb08c4ff362ba9c10070d87403bf7ef08d970895
+index 0000000000000000000000000000000000000000..050e7004c048500190943a0fcf7f3065fe1aba70
 --- /dev/null
 +++ b/Telegram/SourceFiles/tele/tele_linked_accounts_ui.h
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,28 @@
 +#pragma once
 +
 +#include "tele/tele_linked_accounts_data.h"
@@ -5636,8 +6091,11 @@ index 0000000000000000000000000000000000000000..fb08c4ff362ba9c10070d87403bf7ef0
 +
 +namespace Tele {
 +
++void RememberLinkedPlatforms(const std::vector<LinkedPlatform> &platforms);
++void RememberLinkedAccounts(const std::vector<LinkedAccount> &accounts);
 +[[nodiscard]] QString LinkedPlatformName(const QString &platform);
 +[[nodiscard]] QImage LinkedPlatformIcon(const QString &platform, int size);
++[[nodiscard]] QImage LinkedAccountIcon(const LinkedAccount &account, int size);
 +[[nodiscard]] int LinkedVerifiedWidth(bool large = false);
 +void PaintLinkedVerified(
 +	QPainter &p,
@@ -5652,10 +6110,10 @@ index 0000000000000000000000000000000000000000..fb08c4ff362ba9c10070d87403bf7ef0
 +
 +} // namespace Tele
 diff --git a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
-index 6c6b6f11a6e9882fd1748e6d704632cc758e5391..367ba3873f41457d2241952547990452dc0a9f82 100644
+index 6c6b6f11a6e9882fd1748e6d704632cc758e5391..01f210173075aa3a17f14e0f66135befb6379eda 100644
 --- a/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
 +++ b/Telegram/SourceFiles/tele/tests/mad_logic_tests.cpp
-@@ -107,6 +107,24 @@ void TestLinkedAccounts() {
+@@ -107,6 +107,42 @@ void TestLinkedAccounts() {
  	Require(platforms[1].name == QStringLiteral("Last.fm"), "platform title fallback");
  	Require(ParseLinkedToken(QByteArrayLiteral("{\"token\":\"t\",\"userId\":1}")) == QStringLiteral("t"), "token");
  	Require(LinkedPlatformTitle(QStringLiteral("newsite")) == QStringLiteral("Newsite"), "unknown platform title");
@@ -5677,6 +6135,24 @@ index 6c6b6f11a6e9882fd1748e6d704632cc758e5391..367ba3873f41457d2241952547990452
 +		"{\"domain\":\"mad.tg\",\"recordName\":\"x\",\"recordValue\":\"abc\"}")), "bad claim value");
 +	Require(IsLinkedDomain(QStringLiteral("mad.tg")) && !IsLinkedDomain(QStringLiteral("mad")), "domain check");
 +	Require(!IsLinkedDomain(QStringLiteral("https://mad.tg/")), "domain without scheme");
++	const auto served = ParseLinkedPlatforms(QByteArrayLiteral(
++		"[{\"id\":\"xbox\",\"name\":\"Xbox\",\"category\":\"games\",\"method\":\"login\",\"available\":true,\"icon\":\"https://b.mad.tg/api/v1/platforms/xbox/icon.png?v=1a2b3c4d5e\"},"
++		"{\"id\":\"bad\",\"icon\":\"http://b.mad.tg/x.png\"},"
++		"{\"id\":\"domain\",\"name\":\"Domain\",\"method\":\"dns\",\"available\":true}]"));
++	Require(served.size() == 3 && served[0].name == QStringLiteral("Xbox"), "server platform name");
++	Require(served[0].icon.endsWith(QStringLiteral("?v=1a2b3c4d5e")), "server platform icon");
++	Require(served[1].icon.isEmpty() && served[2].icon.isEmpty(), "only https icons");
++	Require(served[2].method == QStringLiteral("dns"), "domain method");
++	const auto favicons = ParseLinkedAccounts(QByteArrayLiteral(
++		"{\"accounts\":["
++		"{\"id\":\"f\",\"platform\":\"domain\",\"handle\":\"mad.tg\",\"url\":\"https://mad.tg\",\"icon\":\"favicon\",\"favicon\":\"https://b.mad.tg/api/v1/platforms/domain/favicons/mad.tg.png?v=0123456789\"},"
++		"{\"id\":\"g\",\"platform\":\"domain\",\"handle\":\"x.tg\",\"icon\":\"default\",\"favicon\":\"https://b.mad.tg/api/v1/platforms/domain/favicons/x.tg.png\"},"
++		"{\"id\":\"h\",\"platform\":\"myforge\",\"handle\":\"me\",\"platformName\":\"My Forge\",\"platformIcon\":\"https://b.mad.tg/api/v1/platforms/myforge/icon.png?v=1\"}]}"));
++	Require(favicons.size() == 3, "favicon accounts parsed");
++	Require(LinkedAccountUsesFavicon(favicons[0]), "favicon chosen");
++	Require(!LinkedAccountUsesFavicon(favicons[1]), "globe chosen");
++	Require(favicons[2].platformName == QStringLiteral("My Forge") && !favicons[2].platformIcon.isEmpty(), "custom platform");
++	Require(!IsLinkedIconUrl(QStringLiteral("https://b.mad.tg/") + QString(600, QChar('a'))), "long icon url");
  }
  
  void TestAgentProtocol() {
