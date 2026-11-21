@@ -66,7 +66,7 @@ index 9b96a9c58f1d6a23751aa58101cd649211316021..4da3abe2fbd208cd89814c70517f2630
  }
  
 diff --git a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
-index b345e8dfa77eda85c4ab8479817c5769192d7208..af5971479bec7136c2bc5fa7ece7a01ab555ad07 100644
+index 9da44a0b9eb3edfd21626b98fbec22886e2ab10e..e0fae67fa66bc3fe5a079626d156732b1abb48b7 100644
 --- a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
 +++ b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
 @@ -108,6 +108,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL

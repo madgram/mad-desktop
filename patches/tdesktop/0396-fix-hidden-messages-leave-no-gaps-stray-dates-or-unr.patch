@@ -6,10 +6,14 @@ Subject: [PATCH] fix: hidden messages leave no gaps, stray dates or unread
 
 ---
  Telegram/SourceFiles/history/history.cpp      |  4 ++-
- .../history/view/history_view_element.cpp     |  2 +-
- .../history/view/history_view_list_widget.cpp | 31 ++++++++++++++-----
+ .../history/history_inner_widget.cpp          |  3 +-
+ .../history/view/history_view_element.cpp     |  3 +-
+ .../history/view/history_view_list_widget.cpp | 33 ++++++++++++++-----
  .../view/history_view_service_message.cpp     |  3 ++
- 4 files changed, 31 insertions(+), 9 deletions(-)
+ .../SourceFiles/tele/tele_communities.cpp     |  1 +
+ .../SourceFiles/tele/tele_hidden_words.cpp    |  5 +++
+ Telegram/SourceFiles/tele/tele_ignored.cpp    |  5 +++
+ 8 files changed, 46 insertions(+), 11 deletions(-)
 
 diff --git a/Telegram/SourceFiles/history/history.cpp b/Telegram/SourceFiles/history/history.cpp
 index efe21ec7e9f77a9f86ba502a0997025d1b6003df..3ddf7d29748f83541d2244ab9b74602b5a9e7c1a 100644
@@ -26,8 +30,22 @@ index efe21ec7e9f77a9f86ba502a0997025d1b6003df..3ddf7d29748f83541d2244ab9b74602b
  				} else {
  					return;
  				}
+diff --git a/Telegram/SourceFiles/history/history_inner_widget.cpp b/Telegram/SourceFiles/history/history_inner_widget.cpp
+index d9d1ed29ad031c4f6706ebdee827c460c806b347..540dd53be7e25c3e008a58c829b1c57050e6652a 100644
+--- a/Telegram/SourceFiles/history/history_inner_widget.cpp
++++ b/Telegram/SourceFiles/history/history_inner_widget.cpp
+@@ -5172,7 +5172,8 @@ void HistoryInner::setupThanosEffect() {
+ 					&& item->history() != migrated()) {
+ 					return nullptr;
+ 				}
+-				return item->mainView();
++				const auto view = item->mainView();
++				return (view && !view->isHidden()) ? view : nullptr;
+ 			},
+ 			.itemTop = [=](not_null<const HistoryView::Element*> view) {
+ 				return itemTop(view);
 diff --git a/Telegram/SourceFiles/history/view/history_view_element.cpp b/Telegram/SourceFiles/history/view/history_view_element.cpp
-index b04a62bb745089e3fb0f98a3fc08cee8da6170c8..aec6dd3d57f327108f71075a02e6e0f9d81feca7 100644
+index b04a62bb745089e3fb0f98a3fc08cee8da6170c8..bcee6297580c0d8e1c59bb67b812fd44ad220acf 100644
 --- a/Telegram/SourceFiles/history/view/history_view_element.cpp
 +++ b/Telegram/SourceFiles/history/view/history_view_element.cpp
 @@ -2633,7 +2633,7 @@ bool Element::isInOneBunchWithPrevious() const {
@@ -39,10 +57,27 @@ index b04a62bb745089e3fb0f98a3fc08cee8da6170c8..aec6dd3d57f327108f71075a02e6e0f9
  		} else if (const auto previous = previousDisplayedInBlocks()) {
  			previous->setAttachToNext(false);
  		}
+@@ -2800,6 +2800,7 @@ void Element::refreshIfHiddenChanged() const {
+ 		Pending.remove(id);
+ 		if (const auto item = session->data().message(id)) {
+ 			session->data().requestItemViewRefresh(item);
++			session->data().sendHistoryChangeNotifications();
+ 		}
+ 	});
+ }
 diff --git a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
-index 86c3b6aaf15727a7fea336ec9a3612449db232cf..907e70a5d104a544dbda031f09ca1182cac7c42c 100644
+index 86c3b6aaf15727a7fea336ec9a3612449db232cf..2447782916350cdffd939048c699b1f9d0cde99e 100644
 --- a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
 +++ b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
+@@ -6174,7 +6174,7 @@ void ListWidget::setupThanosEffect() {
+ 			.viewForItem = [=](not_null<const HistoryItem*> item)
+ 					-> HistoryView::Element* {
+ 				const auto i = _views.find(item);
+-				return (i != end(_views))
++				return (i != end(_views) && !i->second->isHidden())
+ 					? i->second.get()
+ 					: nullptr;
+ 			},
 @@ -6246,11 +6246,9 @@ void ListWidget::refreshAttachmentsAtIndex(int index) {
  	Expects(index >= 0 && index < _items.size());
  
@@ -114,3 +149,55 @@ index fae430b1c47418fbfd964b821c2f11451e61fac3..b0b36d89289ccd43f1a63bddc0b0eaf2
  	auto result = st::msgServiceMargin.bottom();
  	if (const auto margins = Get<ViewAddedMargins>()) {
  		result += margins->bottom;
+diff --git a/Telegram/SourceFiles/tele/tele_communities.cpp b/Telegram/SourceFiles/tele/tele_communities.cpp
+index 0595318d80ad052fa85e6dc2930555a42acbbf07..e63c8db61ec60d370c7d87a4139649ff161293ef 100644
+--- a/Telegram/SourceFiles/tele/tele_communities.cpp
++++ b/Telegram/SourceFiles/tele/tele_communities.cpp
+@@ -56,6 +56,7 @@ void RefreshServiceViews(not_null<Main::Session*> session) {
+ 	for (const auto &item : items) {
+ 		session->data().requestItemViewRefresh(item);
+ 	}
++	session->data().sendHistoryChangeNotifications();
+ }
+ 
+ void CloseCommunityWindows(not_null<Main::Session*> session) {
+diff --git a/Telegram/SourceFiles/tele/tele_hidden_words.cpp b/Telegram/SourceFiles/tele/tele_hidden_words.cpp
+index bcedc4cc8b582511b6bbc95aa7a6b5036ec00421..e2c6f2ac154adb01f95c9bc695f50a96fe754fd1 100644
+--- a/Telegram/SourceFiles/tele/tele_hidden_words.cpp
++++ b/Telegram/SourceFiles/tele/tele_hidden_words.cpp
+@@ -159,12 +159,17 @@ void Apply(Fn<void()> change) {
+ 	auto &state = Get();
+ 	++state.generation;
+ 	state.cache.clear();
++	auto owners = base::flat_set<not_null<Data::Session*>>();
+ 	for (auto i = 0; i != int(items.size()); ++i) {
+ 		const auto item = items[i];
+ 		if (HiddenByWords(item) != before[i]) {
+ 			item->history()->owner().requestItemViewRefresh(item);
++			owners.emplace(&item->history()->owner());
+ 		}
+ 	}
++	for (const auto &owner : owners) {
++		owner->sendHistoryChangeNotifications();
++	}
+ 	state.changes.fire({});
+ }
+ 
+diff --git a/Telegram/SourceFiles/tele/tele_ignored.cpp b/Telegram/SourceFiles/tele/tele_ignored.cpp
+index e0955e6ded4258252aac22e96e58a29cb1180fdd..55b2f056bfa973366935b738e6717c8aeb504aae 100644
+--- a/Telegram/SourceFiles/tele/tele_ignored.cpp
++++ b/Telegram/SourceFiles/tele/tele_ignored.cpp
+@@ -124,8 +124,13 @@ void Refresh(
+ 			items.emplace(item);
+ 		}
+ 	}
++	auto owners = base::flat_set<not_null<Data::Session*>>();
+ 	for (const auto &item : items) {
+ 		item->history()->owner().requestItemViewRefresh(item);
++		owners.emplace(&item->history()->owner());
++	}
++	for (const auto &owner : owners) {
++		owner->sendHistoryChangeNotifications();
+ 	}
+ }
+ 

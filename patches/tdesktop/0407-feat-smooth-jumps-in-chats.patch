@@ -84,7 +84,7 @@ index fc523795f66683e9aa844ab3c35e4b9d05d44d85..9b96a9c58f1d6a23751aa58101cd6492
  
  void HistoryWidget::scrollToAnimationCallback(
 diff --git a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
-index 907e70a5d104a544dbda031f09ca1182cac7c42c..b345e8dfa77eda85c4ab8479817c5769192d7208 100644
+index 2447782916350cdffd939048c699b1f9d0cde99e..9da44a0b9eb3edfd21626b98fbec22886e2ab10e 100644
 --- a/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
 +++ b/Telegram/SourceFiles/history/view/history_view_list_widget.cpp
 @@ -107,6 +107,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL

@@ -73,7 +73,7 @@ index 8d80b8708ff5ba6a7150c6be1b0c9a7d39ef4bf0..b28e2d8d70ff122fa79efa83a52e26c6
  	auto textToCache = DialogsPreviewText(std::move(preview.text));
  
 diff --git a/Telegram/SourceFiles/history/view/history_view_element.cpp b/Telegram/SourceFiles/history/view/history_view_element.cpp
-index aec6dd3d57f327108f71075a02e6e0f9d81feca7..400a7f482609242ff09a8f345f85fd08b28e27a2 100644
+index bcee6297580c0d8e1c59bb67b812fd44ad220acf..ac78d74fea87b9287af7b4adb485946a978be6ca 100644
 --- a/Telegram/SourceFiles/history/view/history_view_element.cpp
 +++ b/Telegram/SourceFiles/history/view/history_view_element.cpp
 @@ -77,6 +77,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
